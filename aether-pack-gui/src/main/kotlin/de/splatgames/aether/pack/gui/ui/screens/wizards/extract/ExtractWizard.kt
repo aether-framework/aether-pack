@@ -47,6 +47,7 @@ import de.splatgames.aether.pack.gui.i18n.I18n
 import de.splatgames.aether.pack.gui.navigation.Navigator
 import de.splatgames.aether.pack.gui.state.AppState
 import de.splatgames.aether.pack.gui.ui.theme.AetherColors
+import de.splatgames.aether.pack.gui.util.ArchiveUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -256,7 +257,10 @@ fun ExtractWizard(
                         scope.launch {
                             try {
                                 withContext(Dispatchers.IO) {
-                                    AetherPackReader.open(archivePath).use { reader ->
+                                    // Use ArchiveUtils to open with proper compression support
+                                    // Pass password for encrypted archives
+                                    val passwordToUse = if (isEncrypted && password.isNotEmpty()) password else null
+                                    ArchiveUtils.openArchive(archivePath, passwordToUse).use { reader ->
                                         for (entry in reader.entries) {
                                             val outputPath = outputDir.resolve(entry.name)
                                             Files.createDirectories(outputPath.parent)

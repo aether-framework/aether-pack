@@ -395,15 +395,15 @@ private fun EntryListItem(
             modifier = Modifier.width(60.dp)
         )
 
-        // Flags
+        // Flags - use actual IDs instead of flags to avoid inconsistency
         Row(
             modifier = Modifier.width(60.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            if (entry.isCompressed) {
+            if (entry.compressionId != 0) {
                 FlagBadge("C", AetherColors.Compressed)
             }
-            if (entry.isEncrypted) {
+            if (entry.encryptionId != 0) {
                 FlagBadge("E", AetherColors.Encrypted)
             }
             if (entry.hasEcc()) {
@@ -432,6 +432,20 @@ private fun FlagBadge(label: String, color: Color) {
 
 @Composable
 private fun ArchiveInfoPanel(state: ArchiveState, i18n: I18n) {
+    // Get compression algorithm from first entry with actual compression (compressionId != 0)
+    val compressionAlgorithm = state.entries
+        .firstOrNull { it.compressionId != 0 }
+        ?.let { FormatUtils.getCompressionName(it.compressionId) }
+
+    // Get encryption algorithm from first entry with actual encryption (encryptionId != 0)
+    val encryptionAlgorithm = state.entries
+        .firstOrNull { it.encryptionId != 0 }
+        ?.let { FormatUtils.getEncryptionName(it.encryptionId) }
+
+    // Count entries with actual compression/encryption (by ID, not flag)
+    val hasCompression = state.entries.any { it.compressionId != 0 }
+    val hasEncryption = state.entries.any { it.encryptionId != 0 }
+
     Column {
         Text(
             text = i18n["inspector.info"],
@@ -456,16 +470,16 @@ private fun ArchiveInfoPanel(state: ArchiveState, i18n: I18n) {
             InfoRow(i18n["archive.chunk_size"], FormatUtils.formatChunkSize(state.fileHeader.chunkSize()))
             InfoRow(i18n["archive.checksum"], FormatUtils.getChecksumName(state.fileHeader.checksumAlgorithm()))
 
-            // Status badges
+            // Status badges with algorithm names - only show if entries actually have compression/encryption
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (state.isEncrypted) {
-                    StatusBadge(i18n["flag.encrypted"], AetherColors.Encrypted)
+                if (hasEncryption && encryptionAlgorithm != null) {
+                    StatusBadge(encryptionAlgorithm, AetherColors.Encrypted)
                 }
-                if (state.isCompressed) {
-                    StatusBadge(i18n["flag.compressed"], AetherColors.Compressed)
+                if (hasCompression && compressionAlgorithm != null) {
+                    StatusBadge(compressionAlgorithm, AetherColors.Compressed)
                 }
             }
         }
@@ -520,12 +534,12 @@ private fun EntryDetailsPanel(entry: Entry, i18n: I18n) {
             InfoRow(i18n["entry.stored_size"], FormatUtils.formatSize(entry.storedSize))
             InfoRow(i18n["entry.ratio"], FormatUtils.formatRatio(ratio))
             InfoRow(i18n["entry.chunks"], entry.chunkCount.toString())
-            InfoRow(i18n["entry.compressed"], if (entry.isCompressed) {
+            InfoRow(i18n["entry.compressed"], if (entry.compressionId != 0) {
                 FormatUtils.getCompressionName(entry.compressionId)
             } else {
                 i18n["flag.no"]
             })
-            InfoRow(i18n["entry.encrypted"], if (entry.isEncrypted) {
+            InfoRow(i18n["entry.encrypted"], if (entry.encryptionId != 0) {
                 FormatUtils.getEncryptionName(entry.encryptionId)
             } else {
                 i18n["flag.no"]

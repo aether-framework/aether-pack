@@ -45,11 +45,11 @@ import com.konyaco.fluent.component.Icon
 import com.konyaco.fluent.component.Text
 import com.konyaco.fluent.icons.Icons
 import com.konyaco.fluent.icons.regular.*
-import de.splatgames.aether.pack.core.AetherPackReader
 import de.splatgames.aether.pack.gui.i18n.I18n
 import de.splatgames.aether.pack.gui.navigation.Navigator
 import de.splatgames.aether.pack.gui.state.AppState
 import de.splatgames.aether.pack.gui.ui.theme.AetherColors
+import de.splatgames.aether.pack.gui.util.ArchiveUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.nio.file.Path
@@ -87,7 +87,8 @@ fun VerifyWizard(
             val verificationResults = mutableListOf<EntryVerificationResult>()
 
             withContext(Dispatchers.IO) {
-                AetherPackReader.open(archivePath).use { reader ->
+                // Use ArchiveUtils to open with proper compression support
+                ArchiveUtils.openArchive(archivePath).use { reader ->
                     val entries = reader.entries.toList()
 
                     entries.forEachIndexed { index, entry ->
