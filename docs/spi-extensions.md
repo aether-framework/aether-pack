@@ -663,7 +663,7 @@ void testWithApack() throws Exception {
 <dependency>
     <groupId>de.splatgames.aether.pack</groupId>
     <artifactId>aether-pack-core</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0-SNAPSHOT</version>
 </dependency>
 ```
 

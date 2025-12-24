@@ -259,7 +259,7 @@ The archive uses a compression algorithm not available on your classpath. Ensure
 <dependency>
     <groupId>de.splatgames.aether.pack</groupId>
     <artifactId>aether-pack-compression</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0-SNAPSHOT</version>
 </dependency>
 ```
 
@@ -271,7 +271,7 @@ The archive uses an encryption algorithm not available. Add `aether-pack-crypto`
 <dependency>
     <groupId>de.splatgames.aether.pack</groupId>
     <artifactId>aether-pack-crypto</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0-SNAPSHOT</version>
 </dependency>
 ```
 

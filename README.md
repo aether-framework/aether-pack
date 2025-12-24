@@ -92,7 +92,7 @@ try (AetherPackReader reader = AetherPackReader.openEncrypted(path, password)) {
 <dependency>
     <groupId>de.splatgames.aether.pack</groupId>
     <artifactId>aether-pack-core</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0-SNAPSHOT</version>
 </dependency>
 ```
 

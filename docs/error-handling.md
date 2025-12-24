@@ -206,7 +206,7 @@ try {
 <dependency>
     <groupId>de.splatgames.aether.pack</groupId>
     <artifactId>aether-pack-compression</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0-SNAPSHOT</version>
 </dependency>
 ```
 
@@ -256,7 +256,7 @@ try {
 <dependency>
     <groupId>de.splatgames.aether.pack</groupId>
     <artifactId>aether-pack-crypto</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0-SNAPSHOT</version>
 </dependency>
 ```
 
