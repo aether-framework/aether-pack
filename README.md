@@ -92,7 +92,7 @@ try (AetherPackReader reader = AetherPackReader.openEncrypted(path, password)) {
 <dependency>
     <groupId>de.splatgames.aether.pack</groupId>
     <artifactId>aether-pack-core</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.1.0</version>
 </dependency>
 ```
 
@@ -100,7 +100,7 @@ try (AetherPackReader reader = AetherPackReader.openEncrypted(path, password)) {
 
 ```groovy
 dependencies {
-    implementation 'de.splatgames.aether.pack:aether-pack-core:0.1.0-SNAPSHOT'
+    implementation 'de.splatgames.aether.pack:aether-pack-core:0.1.0'
 }
 ```
 
@@ -108,7 +108,7 @@ dependencies {
 
 ```kotlin
 dependencies {
-    implementation("de.splatgames.aether.pack:aether-pack-core:0.1.0-SNAPSHOT")
+    implementation("de.splatgames.aether.pack:aether-pack-core:0.1.0")
 }
 ```
 

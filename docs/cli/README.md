@@ -13,21 +13,21 @@ After building the project, the CLI is packaged as a fat JAR with all dependenci
 mvn clean package
 
 # The CLI JAR is located at:
-# aether-pack-cli/target/aether-pack-cli-0.1.0-SNAPSHOT-fat.jar
+# aether-pack-cli/target/aether-pack-cli-0.1.0-fat.jar
 ```
 
 ### Running the CLI
 
 ```bash
 # Direct execution
-java -jar aether-pack-cli-0.1.0-SNAPSHOT-fat.jar [command] [options]
+java -jar aether-pack-cli-0.1.0-fat.jar [command] [options]
 
 # Create an alias for convenience (Unix/Linux/macOS)
-alias apack='java -jar /path/to/aether-pack-cli-0.1.0-SNAPSHOT-fat.jar'
+alias apack='java -jar /path/to/aether-pack-cli-0.1.0-fat.jar'
 
 # Windows batch file (apack.bat)
 @echo off
-java -jar C:\path\to\aether-pack-cli-0.1.0-SNAPSHOT-fat.jar %*
+java -jar C:\path\to\aether-pack-cli-0.1.0-fat.jar %*
 ```
 
 ---
