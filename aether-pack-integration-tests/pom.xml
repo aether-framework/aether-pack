@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.splatgames.aether.pack</groupId>
+        <artifactId>aether-pack</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>aether-pack-integration-tests</artifactId>
+    <packaging>jar</packaging>
+
+    <name>Aether Pack :: Integration Tests</name>
+    <description>Integration tests for Aether Pack</description>
+
+    <dependencies>
+        <!-- All modules for integration testing -->
+        <dependency>
+            <groupId>de.splatgames.aether.pack</groupId>
+            <artifactId>aether-pack-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>de.splatgames.aether.pack</groupId>
+            <artifactId>aether-pack-compression</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>de.splatgames.aether.pack</groupId>
+            <artifactId>aether-pack-crypto</artifactId>
+        </dependency>
+
+        <!-- Testing -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Skip installation/deployment of test module -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-install-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-deploy-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

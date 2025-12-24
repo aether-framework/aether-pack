@@ -1,0 +1,2 @@
+de.splatgames.aether.pack.compression.ZstdCompressionProvider
+de.splatgames.aether.pack.compression.Lz4CompressionProvider

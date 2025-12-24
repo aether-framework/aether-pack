@@ -1,0 +1,2 @@
+de.splatgames.aether.pack.crypto.Aes256GcmEncryptionProvider
+de.splatgames.aether.pack.crypto.ChaCha20Poly1305EncryptionProvider
