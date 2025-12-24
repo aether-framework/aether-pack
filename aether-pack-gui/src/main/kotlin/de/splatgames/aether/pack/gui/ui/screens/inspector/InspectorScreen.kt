@@ -36,6 +36,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -341,7 +344,7 @@ private fun EntryListItem(
     }
 
     val backgroundColor = when {
-        isSelected -> AetherColors.AccentSubtle
+        isSelected -> AetherColors.AccentPrimary.copy(alpha = 0.15f)
         isHovered -> FluentTheme.colors.subtleFill.secondary
         else -> Color.Transparent
     }
@@ -350,6 +353,19 @@ private fun EntryListItem(
         modifier = Modifier
             .fillMaxWidth()
             .background(backgroundColor)
+            .then(
+                if (isSelected) {
+                    Modifier.drawBehind {
+                        drawRect(
+                            color = AetherColors.AccentPrimary,
+                            topLeft = Offset.Zero,
+                            size = Size(3.dp.toPx(), size.height)
+                        )
+                    }
+                } else {
+                    Modifier
+                }
+            )
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,

@@ -54,11 +54,17 @@ import com.konyaco.fluent.icons.regular.*
 import de.splatgames.aether.pack.compression.CompressionRegistry
 import de.splatgames.aether.pack.core.AetherPackWriter
 import de.splatgames.aether.pack.core.ApackConfiguration
+import de.splatgames.aether.pack.core.format.EncryptionBlock
+import de.splatgames.aether.pack.core.format.FormatConstants
+import de.splatgames.aether.pack.crypto.Argon2idKeyDerivation
+import de.splatgames.aether.pack.crypto.EncryptionRegistry
+import de.splatgames.aether.pack.crypto.KeyWrapper
 import de.splatgames.aether.pack.gui.i18n.I18n
 import de.splatgames.aether.pack.gui.navigation.Navigator
 import de.splatgames.aether.pack.gui.state.AppState
 import de.splatgames.aether.pack.gui.ui.theme.AetherColors
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.nio.file.Files
@@ -214,6 +220,12 @@ fun CreateArchiveWizard(
                             withContext(Dispatchers.IO) {
                                 // Collect all files to add (expand directories)
                                 val allFiles = mutableListOf<Pair<Path, String>>()
+
+                                withContext(Dispatchers.Main) {
+                                    currentFileName = i18n["wizard.create.scanning"]
+                                    creationProgress = 0f
+                                }
+
                                 for (path in selectedFiles) {
                                     if (Files.isDirectory(path)) {
                                         // Walk directory and add all files with relative paths
@@ -249,17 +261,81 @@ fun CreateArchiveWizard(
                                     }
                                 }
 
+                                // Add encryption if enabled
+                                if (enableEncryption && password.isNotEmpty()) {
+                                    try {
+                                        withContext(Dispatchers.Main) {
+                                            currentFileName = i18n["wizard.create.deriving_key"]
+                                        }
+
+                                        // Get encryption provider
+                                        val encryptionProvider = when (encryptionAlgorithm) {
+                                            "aes-256-gcm" -> EncryptionRegistry.aes256Gcm()
+                                            "chacha20-poly1305" -> EncryptionRegistry.chaCha20Poly1305()
+                                            else -> EncryptionRegistry.aes256Gcm()
+                                        }
+
+                                        // Create KDF and derive key
+                                        val kdf = Argon2idKeyDerivation()
+                                        val salt = kdf.generateSalt()
+
+                                        // Generate random Content Encryption Key (CEK)
+                                        val cek = KeyWrapper.generateAes256Key()
+
+                                        // Wrap CEK with password-derived key
+                                        val wrappedKey = KeyWrapper.wrapWithPassword(
+                                            cek,
+                                            password.toCharArray(),
+                                            salt,
+                                            kdf
+                                        )
+
+                                        // Get cipher algorithm ID
+                                        val cipherAlgorithmId = when (encryptionAlgorithm) {
+                                            "aes-256-gcm" -> FormatConstants.ENCRYPTION_AES_256_GCM
+                                            "chacha20-poly1305" -> FormatConstants.ENCRYPTION_CHACHA20_POLY1305
+                                            else -> FormatConstants.ENCRYPTION_AES_256_GCM
+                                        }
+
+                                        // Build encryption block
+                                        val encryptionBlock = EncryptionBlock.builder()
+                                            .kdfAlgorithmId(FormatConstants.KDF_ARGON2ID)
+                                            .cipherAlgorithmId(cipherAlgorithmId)
+                                            .kdfIterations(3)
+                                            .kdfMemory(65536) // 64 MB
+                                            .kdfParallelism(4)
+                                            .salt(salt)
+                                            .wrappedKey(wrappedKey)
+                                            .wrappedKeyTag(ByteArray(16)) // Tag is included in wrappedKey for AES Key Wrap
+                                            .build()
+
+                                        configBuilder.encryption(encryptionProvider, cek, encryptionBlock)
+                                    } catch (e: Exception) {
+                                        throw RuntimeException("Failed to setup encryption: ${e.message}", e)
+                                    }
+                                }
+
                                 val config = configBuilder.build()
 
                                 // Create archive
+                                val totalFiles = allFiles.size
                                 AetherPackWriter.create(outputPath!!, config).use { writer ->
                                     allFiles.forEachIndexed { index, (filePath, entryName) ->
+                                        // Update progress before processing each file
                                         withContext(Dispatchers.Main) {
                                             currentFileName = entryName
-                                            creationProgress = (index + 1).toFloat() / allFiles.size
+                                            creationProgress = index.toFloat() / totalFiles
                                         }
 
+                                        // Small delay to allow UI to update
+                                        delay(10)
+
                                         writer.addEntry(entryName, filePath)
+
+                                        // Update progress after file is added
+                                        withContext(Dispatchers.Main) {
+                                            creationProgress = (index + 1).toFloat() / totalFiles
+                                        }
                                     }
                                 }
                             }

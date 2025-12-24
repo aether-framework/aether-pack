@@ -35,7 +35,11 @@ import de.splatgames.aether.pack.gui.state.AppState
  */
 fun main() = application {
     val appState = remember { AppState() }
-    val i18n = remember { I18n.load(appState.settings.locale) }
+
+    // Recreate I18n when locale changes (reactive to settings changes)
+    val i18n = remember(appState.settings.locale) {
+        I18n.load(appState.settings.locale)
+    }
 
     Window(
         onCloseRequest = ::exitApplication,

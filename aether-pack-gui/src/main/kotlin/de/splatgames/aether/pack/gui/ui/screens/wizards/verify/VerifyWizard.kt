@@ -43,6 +43,9 @@ import com.konyaco.fluent.FluentTheme
 import com.konyaco.fluent.component.Button
 import com.konyaco.fluent.component.Icon
 import com.konyaco.fluent.component.Text
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.konyaco.fluent.icons.Icons
 import com.konyaco.fluent.icons.regular.*
 import de.splatgames.aether.pack.gui.i18n.I18n
@@ -51,6 +54,7 @@ import de.splatgames.aether.pack.gui.state.AppState
 import de.splatgames.aether.pack.gui.ui.theme.AetherColors
 import de.splatgames.aether.pack.gui.util.ArchiveUtils
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.nio.file.Path
 
@@ -74,51 +78,81 @@ fun VerifyWizard(
     i18n: I18n,
     navigator: Navigator
 ) {
-    var isVerifying by remember { mutableStateOf(true) }
+    var isVerifying by remember { mutableStateOf(false) }
     var verificationComplete by remember { mutableStateOf(false) }
     var results by remember { mutableStateOf<List<EntryVerificationResult>>(emptyList()) }
     var currentEntry by remember { mutableStateOf("") }
     var progress by remember { mutableStateOf(0f) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Start verification automatically
+    // Encryption state
+    var isEncrypted by remember { mutableStateOf(false) }
+    var needsPassword by remember { mutableStateOf(false) }
+    var password by remember { mutableStateOf("") }
+    var checkingEncryption by remember { mutableStateOf(true) }
+
+    val scope = rememberCoroutineScope()
+
+    // First check if archive is encrypted
     LaunchedEffect(archivePath) {
         try {
-            val verificationResults = mutableListOf<EntryVerificationResult>()
-
             withContext(Dispatchers.IO) {
-                // Use ArchiveUtils to open with proper compression support
-                ArchiveUtils.openArchive(archivePath).use { reader ->
-                    val entries = reader.entries.toList()
-
-                    entries.forEachIndexed { index, entry ->
-                        // Update UI state on main thread
-                        withContext(Dispatchers.Main) {
-                            currentEntry = entry.name
-                            progress = (index + 1).toFloat() / entries.size
-                        }
-
-                        try {
-                            // Read all bytes to verify checksums
-                            reader.readAllBytes(entry)
-                            verificationResults.add(
-                                EntryVerificationResult(entry.name, true)
-                            )
-                        } catch (e: Exception) {
-                            verificationResults.add(
-                                EntryVerificationResult(entry.name, false, e.message)
-                            )
-                        }
-                    }
-                }
+                isEncrypted = ArchiveUtils.isEncrypted(archivePath)
             }
-
-            results = verificationResults
-            verificationComplete = true
+            if (isEncrypted) {
+                needsPassword = true
+            } else {
+                // Start verification immediately for unencrypted archives
+                startVerification(
+                    archivePath = archivePath,
+                    password = null,
+                    i18n = i18n,
+                    onProgress = { entry, prog ->
+                        currentEntry = entry
+                        progress = prog
+                    },
+                    onResult = { resultList, error ->
+                        if (error != null) {
+                            errorMessage = error
+                        } else {
+                            results = resultList
+                            verificationComplete = true
+                        }
+                        isVerifying = false
+                    }
+                )
+                isVerifying = true
+            }
         } catch (e: Exception) {
             errorMessage = e.message ?: i18n["error.unknown"]
         } finally {
-            isVerifying = false
+            checkingEncryption = false
+        }
+    }
+
+    // Function to start verification with password
+    fun onPasswordSubmit() {
+        needsPassword = false
+        isVerifying = true
+        scope.launch {
+            startVerification(
+                archivePath = archivePath,
+                password = password,
+                i18n = i18n,
+                onProgress = { entry, prog ->
+                    currentEntry = entry
+                    progress = prog
+                },
+                onResult = { resultList, error ->
+                    if (error != null) {
+                        errorMessage = error
+                    } else {
+                        results = resultList
+                        verificationComplete = true
+                    }
+                    isVerifying = false
+                }
+            )
         }
     }
 
@@ -176,8 +210,25 @@ fun VerifyWizard(
                 .padding(24.dp)
         ) {
             when {
+                checkingEncryption -> {
+                    // Loading state while checking encryption
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = AetherColors.AccentPrimary)
+                    }
+                }
                 errorMessage != null -> {
                     ErrorContent(errorMessage!!, i18n)
+                }
+                needsPassword -> {
+                    PasswordInputContent(
+                        password = password,
+                        onPasswordChange = { password = it },
+                        onSubmit = { onPasswordSubmit() },
+                        i18n = i18n
+                    )
                 }
                 isVerifying -> {
                     VerifyingContent(
@@ -198,7 +249,31 @@ fun VerifyWizard(
         }
 
         // Footer
-        if (verificationComplete || errorMessage != null) {
+        if (needsPassword) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(FluentTheme.colors.background.solid.base)
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+            ) {
+                Button(onClick = { navigator.goBack() }) {
+                    Text(i18n["common.cancel"])
+                }
+                AccentButton(
+                    onClick = { onPasswordSubmit() },
+                    enabled = password.isNotEmpty()
+                ) {
+                    Icon(
+                        imageVector = Icons.Regular.ShieldCheckmark,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(i18n["wizard.verify.title"])
+                }
+            }
+        } else if (verificationComplete || errorMessage != null) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -373,6 +448,74 @@ private fun ResultRow(
 }
 
 @Composable
+private fun PasswordInputContent(
+    password: String,
+    onPasswordChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    i18n: I18n
+) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.widthIn(max = 400.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Regular.LockClosed,
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = AetherColors.Encrypted
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                text = i18n["wizard.extract.password_required"],
+                style = FluentTheme.typography.subtitle
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = i18n["wizard.extract.enter_password"],
+                style = FluentTheme.typography.body,
+                color = FluentTheme.colors.text.text.secondary
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            OutlinedTextField(
+                value = password,
+                onValueChange = onPasswordChange,
+                modifier = Modifier.fillMaxWidth(),
+                label = { androidx.compose.material3.Text(i18n["wizard.create.password"]) },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = AetherColors.AccentPrimary,
+                    cursorColor = AetherColors.AccentPrimary
+                )
+            )
+        }
+    }
+}
+
+@Composable
+private fun AccentButton(
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit
+) {
+    val backgroundColor = if (enabled) AetherColors.AccentPrimary else AetherColors.AccentPrimary.copy(alpha = 0.5f)
+
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(backgroundColor)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content
+    )
+}
+
+@Composable
 private fun ErrorContent(message: String, i18n: I18n) {
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -397,6 +540,55 @@ private fun ErrorContent(message: String, i18n: I18n) {
                 style = FluentTheme.typography.body,
                 color = FluentTheme.colors.text.text.secondary
             )
+        }
+    }
+}
+
+/**
+ * Helper function to perform verification in a coroutine.
+ */
+private suspend fun startVerification(
+    archivePath: Path,
+    password: String?,
+    i18n: I18n,
+    onProgress: (entry: String, progress: Float) -> Unit,
+    onResult: (results: List<EntryVerificationResult>, error: String?) -> Unit
+) {
+    try {
+        val verificationResults = mutableListOf<EntryVerificationResult>()
+
+        withContext(Dispatchers.IO) {
+            // Use ArchiveUtils to open with proper compression and encryption support
+            ArchiveUtils.openArchive(archivePath, password).use { reader ->
+                val entries = reader.entries.toList()
+
+                entries.forEachIndexed { index, entry ->
+                    // Update UI state on main thread
+                    withContext(Dispatchers.Main) {
+                        onProgress(entry.name, (index + 1).toFloat() / entries.size)
+                    }
+
+                    try {
+                        // Read all bytes to verify checksums
+                        reader.readAllBytes(entry)
+                        verificationResults.add(
+                            EntryVerificationResult(entry.name, true)
+                        )
+                    } catch (e: Exception) {
+                        verificationResults.add(
+                            EntryVerificationResult(entry.name, false, e.message)
+                        )
+                    }
+                }
+            }
+        }
+
+        withContext(Dispatchers.Main) {
+            onResult(verificationResults, null)
+        }
+    } catch (e: Exception) {
+        withContext(Dispatchers.Main) {
+            onResult(emptyList(), e.message ?: i18n["error.unknown"])
         }
     }
 }

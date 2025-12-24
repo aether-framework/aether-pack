@@ -33,6 +33,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.konyaco.fluent.FluentTheme
 import androidx.compose.material3.OutlinedTextField
@@ -42,7 +43,6 @@ import com.konyaco.fluent.component.Icon
 import com.konyaco.fluent.component.Text
 import com.konyaco.fluent.icons.Icons
 import com.konyaco.fluent.icons.regular.*
-import de.splatgames.aether.pack.core.AetherPackReader
 import de.splatgames.aether.pack.gui.i18n.I18n
 import de.splatgames.aether.pack.gui.navigation.Navigator
 import de.splatgames.aether.pack.gui.state.AppState
@@ -79,9 +79,7 @@ fun ExtractWizard(
     LaunchedEffect(archivePath) {
         withContext(Dispatchers.IO) {
             try {
-                AetherPackReader.open(archivePath).use { reader ->
-                    isEncrypted = reader.fileHeader.isEncrypted
-                }
+                isEncrypted = ArchiveUtils.isEncrypted(archivePath)
             } catch (e: Exception) {
                 // Will be handled during extraction
             }
@@ -201,6 +199,7 @@ fun ExtractWizard(
                                     label = { androidx.compose.material3.Text(i18n["wizard.create.password"]) },
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true,
+                                    visualTransformation = PasswordVisualTransformation(),
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = AetherColors.AccentPrimary,
                                         cursorColor = AetherColors.AccentPrimary

@@ -27,6 +27,8 @@ import androidx.compose.ui.graphics.Color
 import com.konyaco.fluent.FluentTheme
 import com.konyaco.fluent.LocalContentColor
 import com.konyaco.fluent.background.Mica
+import com.konyaco.fluent.darkColors
+import com.konyaco.fluent.lightColors
 
 /**
  * Aether Pack color palette based on Windows Fluent Design.
@@ -59,7 +61,8 @@ fun AetherFluentTheme(
     darkTheme: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    FluentTheme {
+    val colors = if (darkTheme) darkColors() else lightColors()
+    FluentTheme(colors = colors) {
         content()
     }
 }
