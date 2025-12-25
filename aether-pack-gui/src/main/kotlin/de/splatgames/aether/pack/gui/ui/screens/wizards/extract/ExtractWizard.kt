@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -74,6 +75,9 @@ fun ExtractWizard(
     var isExtracting by remember { mutableStateOf(false) }
     var extractionComplete by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var extractionProgress by remember { mutableStateOf(0f) }
+    var currentFileName by remember { mutableStateOf("") }
+    var isProcessingLargeFile by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     // Check if archive is encrypted
@@ -149,7 +153,12 @@ fun ExtractWizard(
                     )
                 }
                 isExtracting -> {
-                    ExtractingContent(i18n)
+                    ExtractingContent(
+                        progress = extractionProgress,
+                        currentEntry = currentFileName,
+                        isIndeterminate = isProcessingLargeFile,
+                        i18n = i18n
+                    )
                 }
                 else -> {
                     Column(
@@ -250,6 +259,7 @@ fun ExtractWizard(
                 AccentButton(
                     onClick = {
                         isExtracting = true
+                        extractionProgress = 0f
                         scope.launch {
                             try {
                                 withContext(Dispatchers.IO) {
@@ -257,17 +267,56 @@ fun ExtractWizard(
                                     // Pass password for encrypted archives
                                     val passwordToUse = if (isEncrypted && password.isNotEmpty()) password else null
                                     ArchiveUtils.openArchive(archivePath, passwordToUse).use { reader ->
-                                        for (entry in reader.entries) {
-                                            val outputPath = outputDir.resolve(entry.name)
-                                            Files.createDirectories(outputPath.parent)
+                                        val entries = reader.entries.toList()
 
-                                            if (!overwrite && Files.exists(outputPath)) {
-                                                continue
+                                        // Calculate total size for accurate progress tracking
+                                        val totalBytes = entries.sumOf { it.originalSize }
+                                        var processedBytes = 0L
+
+                                        // Threshold for "large file" (10 MB)
+                                        val largeFileThreshold = 10 * 1024 * 1024L
+
+                                        entries.forEachIndexed { index, entry ->
+                                            val entryOutputPath = outputDir.resolve(entry.name)
+                                            Files.createDirectories(entryOutputPath.parent)
+
+                                            if (!overwrite && Files.exists(entryOutputPath)) {
+                                                processedBytes += entry.originalSize
+                                                return@forEachIndexed
                                             }
 
+                                            val isLarge = entry.originalSize > largeFileThreshold
+
+                                            // Update progress before processing
+                                            withContext(Dispatchers.Main) {
+                                                currentFileName = entry.name
+                                                isProcessingLargeFile = isLarge
+                                                extractionProgress = if (totalBytes > 0) {
+                                                    processedBytes.toFloat() / totalBytes
+                                                } else {
+                                                    index.toFloat() / entries.size
+                                                }
+                                            }
+
+                                            // Small delay to allow UI to update
+                                            kotlinx.coroutines.delay(10)
+
                                             reader.getInputStream(entry).use { input ->
-                                                Files.newOutputStream(outputPath).use { output ->
+                                                Files.newOutputStream(entryOutputPath).use { output ->
                                                     input.copyTo(output)
+                                                }
+                                            }
+
+                                            // Update bytes processed after file is extracted
+                                            processedBytes += entry.originalSize
+
+                                            // Update progress after file is done
+                                            withContext(Dispatchers.Main) {
+                                                isProcessingLargeFile = false
+                                                extractionProgress = if (totalBytes > 0) {
+                                                    processedBytes.toFloat() / totalBytes
+                                                } else {
+                                                    (index + 1).toFloat() / entries.size
                                                 }
                                             }
                                         }
@@ -292,6 +341,7 @@ fun ExtractWizard(
                                 }
                             } finally {
                                 isExtracting = false
+                                isProcessingLargeFile = false
                             }
                         }
                     },
@@ -357,21 +407,65 @@ private fun AccentButton(
 }
 
 @Composable
-private fun ExtractingContent(i18n: I18n) {
+private fun ExtractingContent(
+    progress: Float,
+    currentEntry: String,
+    isIndeterminate: Boolean,
+    i18n: I18n
+) {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.widthIn(max = 400.dp)
+        ) {
             CircularProgressIndicator(
                 color = AetherColors.AccentPrimary,
                 modifier = Modifier.size(48.dp)
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(24.dp))
             Text(
                 text = i18n["wizard.extract.extracting"],
-                style = FluentTheme.typography.body
+                style = FluentTheme.typography.subtitle
             )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = currentEntry,
+                style = FluentTheme.typography.caption,
+                color = FluentTheme.colors.text.text.secondary
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+
+            if (isIndeterminate) {
+                // Show indeterminate progress for large files
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = AetherColors.AccentPrimary,
+                    trackColor = FluentTheme.colors.subtleFill.secondary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = i18n["common.please_wait"],
+                    style = FluentTheme.typography.caption,
+                    color = FluentTheme.colors.text.text.secondary
+                )
+            } else {
+                // Show determinate progress
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = AetherColors.AccentPrimary,
+                    trackColor = FluentTheme.colors.subtleFill.secondary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "${(progress * 100).toInt()}%",
+                    style = FluentTheme.typography.caption,
+                    color = FluentTheme.colors.text.text.secondary
+                )
+            }
         }
     }
 }

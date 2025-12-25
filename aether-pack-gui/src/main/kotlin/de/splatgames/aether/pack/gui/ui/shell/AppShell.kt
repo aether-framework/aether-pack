@@ -79,14 +79,19 @@ fun AppShell(
     i18n: I18n,
     content: @Composable () -> Unit
 ) {
-    var selectedNav by remember { mutableStateOf<NavDestination>(NavDestination.Home) }
+    // Derive selected nav from current screen
+    val selectedNav = when (navigator.currentScreen) {
+        is Screen.Dashboard -> NavDestination.Home
+        is Screen.Inspector, is Screen.ExtractWizard, is Screen.VerifyWizard -> NavDestination.Open
+        is Screen.CreateWizard -> NavDestination.Create
+        is Screen.Settings -> NavDestination.Settings
+    }
 
     Row(modifier = Modifier.fillMaxSize()) {
         // Sidebar Navigation
         NavigationSidebar(
             selectedNav = selectedNav,
             onNavSelected = { nav ->
-                selectedNav = nav
                 when (nav) {
                     NavDestination.Home -> navigator.goHome()
                     NavDestination.Open -> openArchiveDialog(navigator)

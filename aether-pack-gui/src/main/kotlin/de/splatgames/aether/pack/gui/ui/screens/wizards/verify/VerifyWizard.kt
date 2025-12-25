@@ -83,6 +83,7 @@ fun VerifyWizard(
     var results by remember { mutableStateOf<List<EntryVerificationResult>>(emptyList()) }
     var currentEntry by remember { mutableStateOf("") }
     var progress by remember { mutableStateOf(0f) }
+    var isProcessingLargeFile by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     // Encryption state
@@ -103,13 +104,15 @@ fun VerifyWizard(
                 needsPassword = true
             } else {
                 // Start verification immediately for unencrypted archives
+                isVerifying = true
                 startVerification(
                     archivePath = archivePath,
                     password = null,
                     i18n = i18n,
-                    onProgress = { entry, prog ->
+                    onProgress = { entry, prog, isLarge ->
                         currentEntry = entry
                         progress = prog
+                        isProcessingLargeFile = isLarge
                     },
                     onResult = { resultList, error ->
                         if (error != null) {
@@ -119,9 +122,9 @@ fun VerifyWizard(
                             verificationComplete = true
                         }
                         isVerifying = false
+                        isProcessingLargeFile = false
                     }
                 )
-                isVerifying = true
             }
         } catch (e: Exception) {
             errorMessage = e.message ?: i18n["error.unknown"]
@@ -139,9 +142,10 @@ fun VerifyWizard(
                 archivePath = archivePath,
                 password = password,
                 i18n = i18n,
-                onProgress = { entry, prog ->
+                onProgress = { entry, prog, isLarge ->
                     currentEntry = entry
                     progress = prog
+                    isProcessingLargeFile = isLarge
                 },
                 onResult = { resultList, error ->
                     if (error != null) {
@@ -151,6 +155,7 @@ fun VerifyWizard(
                         verificationComplete = true
                     }
                     isVerifying = false
+                    isProcessingLargeFile = false
                 }
             )
         }
@@ -234,6 +239,7 @@ fun VerifyWizard(
                     VerifyingContent(
                         progress = progress,
                         currentEntry = currentEntry,
+                        isIndeterminate = isProcessingLargeFile,
                         i18n = i18n
                     )
                 }
@@ -294,6 +300,7 @@ fun VerifyWizard(
 private fun VerifyingContent(
     progress: Float,
     currentEntry: String,
+    isIndeterminate: Boolean,
     i18n: I18n
 ) {
     Box(
@@ -315,23 +322,40 @@ private fun VerifyingContent(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = i18n.format("wizard.verify.progress", currentEntry),
+                text = currentEntry,
                 style = FluentTheme.typography.caption,
                 color = FluentTheme.colors.text.text.secondary
             )
             Spacer(modifier = Modifier.height(24.dp))
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth(),
-                color = AetherColors.AccentPrimary,
-                trackColor = FluentTheme.colors.subtleFill.secondary
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "${(progress * 100).toInt()}%",
-                style = FluentTheme.typography.caption,
-                color = FluentTheme.colors.text.text.secondary
-            )
+
+            if (isIndeterminate) {
+                // Show indeterminate progress for large files
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = AetherColors.AccentPrimary,
+                    trackColor = FluentTheme.colors.subtleFill.secondary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = i18n["common.please_wait"],
+                    style = FluentTheme.typography.caption,
+                    color = FluentTheme.colors.text.text.secondary
+                )
+            } else {
+                // Show determinate progress
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = AetherColors.AccentPrimary,
+                    trackColor = FluentTheme.colors.subtleFill.secondary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "${(progress * 100).toInt()}%",
+                    style = FluentTheme.typography.caption,
+                    color = FluentTheme.colors.text.text.secondary
+                )
+            }
         }
     }
 }
@@ -570,7 +594,7 @@ private suspend fun startVerification(
     archivePath: Path,
     password: String?,
     i18n: I18n,
-    onProgress: (entry: String, progress: Float) -> Unit,
+    onProgress: (entry: String, progress: Float, isLargeFile: Boolean) -> Unit,
     onResult: (results: List<EntryVerificationResult>, error: String?) -> Unit
 ) {
     try {
@@ -581,11 +605,28 @@ private suspend fun startVerification(
             ArchiveUtils.openArchive(archivePath, password).use { reader ->
                 val entries = reader.entries.toList()
 
+                // Calculate total size for accurate progress tracking
+                val totalBytes = entries.sumOf { it.originalSize }
+                var processedBytes = 0L
+
+                // Threshold for "large file" (10 MB)
+                val largeFileThreshold = 10 * 1024 * 1024L
+
                 entries.forEachIndexed { index, entry ->
-                    // Update UI state on main thread
+                    val isLarge = entry.originalSize > largeFileThreshold
+
+                    // Update UI state on main thread BEFORE processing
                     withContext(Dispatchers.Main) {
-                        onProgress(entry.name, (index + 1).toFloat() / entries.size)
+                        val currentProgress = if (totalBytes > 0) {
+                            processedBytes.toFloat() / totalBytes
+                        } else {
+                            index.toFloat() / entries.size
+                        }
+                        onProgress(entry.name, currentProgress, isLarge)
                     }
+
+                    // Small delay to allow UI to update
+                    kotlinx.coroutines.delay(10)
 
                     try {
                         // Read all bytes to verify checksums
@@ -597,6 +638,19 @@ private suspend fun startVerification(
                         verificationResults.add(
                             EntryVerificationResult(entry.name, false, e.message)
                         )
+                    }
+
+                    // Update bytes processed AFTER file is verified
+                    processedBytes += entry.originalSize
+
+                    // Update progress after file is done
+                    withContext(Dispatchers.Main) {
+                        val currentProgress = if (totalBytes > 0) {
+                            processedBytes.toFloat() / totalBytes
+                        } else {
+                            (index + 1).toFloat() / entries.size
+                        }
+                        onProgress(entry.name, currentProgress, false)
                     }
                 }
             }
