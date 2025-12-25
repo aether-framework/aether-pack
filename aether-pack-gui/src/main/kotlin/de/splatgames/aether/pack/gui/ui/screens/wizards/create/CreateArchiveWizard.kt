@@ -1194,17 +1194,17 @@ private fun CreationErrorContent(
 }
 
 /**
- * Creates consistent OutlinedTextField colors for dark mode compatibility.
+ * Creates consistent OutlinedTextField colors for theme compatibility.
  */
 @Composable
 private fun outlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedTextColor = Color.White,
-    unfocusedTextColor = Color.White,
+    focusedTextColor = FluentTheme.colors.text.text.primary,
+    unfocusedTextColor = FluentTheme.colors.text.text.primary,
     focusedBorderColor = AetherColors.AccentPrimary,
-    unfocusedBorderColor = Color(0xFF6E6E6E),
+    unfocusedBorderColor = FluentTheme.colors.stroke.control.default,
     focusedLabelColor = AetherColors.AccentPrimary,
-    unfocusedLabelColor = Color(0xFFAAAAAA),
+    unfocusedLabelColor = FluentTheme.colors.text.text.secondary,
     cursorColor = AetherColors.AccentPrimary,
-    focusedPlaceholderColor = Color(0xFF8A8A8A),
-    unfocusedPlaceholderColor = Color(0xFF8A8A8A)
+    focusedPlaceholderColor = FluentTheme.colors.text.text.secondary,
+    unfocusedPlaceholderColor = FluentTheme.colors.text.text.secondary
 )

@@ -26,12 +26,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import com.konyaco.fluent.FluentTheme
-import com.konyaco.fluent.LocalContentColor
-import com.konyaco.fluent.background.Mica
+import com.konyaco.fluent.LocalContentColor as FluentLocalContentColor
 import com.konyaco.fluent.darkColors
 import com.konyaco.fluent.lightColors
+import androidx.compose.material3.LocalContentColor as Material3LocalContentColor
 
 /**
  * Aether Pack color palette based on Windows Fluent Design.
@@ -101,10 +102,16 @@ fun AetherFluentTheme(
 ) {
     val fluentColors = if (darkTheme) darkColors() else lightColors()
     val materialColors = if (darkTheme) DarkMaterialColors else LightMaterialColors
+    val contentColor = if (darkTheme) Color.White else Color(0xFF1C1B1F)
 
     MaterialTheme(colorScheme = materialColors) {
         FluentTheme(colors = fluentColors) {
-            content()
+            CompositionLocalProvider(
+                Material3LocalContentColor provides contentColor,
+                FluentLocalContentColor provides contentColor
+            ) {
+                content()
+            }
         }
     }
 }
