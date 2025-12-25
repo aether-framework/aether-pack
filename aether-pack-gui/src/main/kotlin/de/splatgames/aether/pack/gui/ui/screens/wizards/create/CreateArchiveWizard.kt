@@ -60,6 +60,7 @@ import de.splatgames.aether.pack.gui.i18n.I18n
 import de.splatgames.aether.pack.gui.navigation.Navigator
 import de.splatgames.aether.pack.gui.state.AppState
 import de.splatgames.aether.pack.gui.ui.components.FileDragDropContainer
+import de.splatgames.aether.pack.gui.ui.components.HelpTooltip
 import de.splatgames.aether.pack.gui.ui.theme.AetherColors
 import java.nio.file.Files
 import java.nio.file.Path
@@ -212,7 +213,18 @@ fun CreateArchiveWizard(
                     )
                     1 -> CompressionStep(
                         algorithm = wizardState.compressionAlgorithm,
-                        onAlgorithmChanged = { wizardState.compressionAlgorithm = it },
+                        onAlgorithmChanged = { newAlgorithm ->
+                            wizardState.compressionAlgorithm = newAlgorithm
+                            // Clamp level to new algorithm's max
+                            val newMaxLevel = when (newAlgorithm) {
+                                "zstd" -> 22
+                                "lz4" -> 17
+                                else -> 1
+                            }
+                            if (wizardState.compressionLevel > newMaxLevel) {
+                                wizardState.compressionLevel = newMaxLevel
+                            }
+                        },
                         level = wizardState.compressionLevel,
                         onLevelChanged = { wizardState.compressionLevel = it },
                         chunkSizeKb = wizardState.chunkSizeKb,
@@ -618,12 +630,22 @@ private fun CompressionStep(
     onChunkSizeChanged: (Int) -> Unit,
     i18n: I18n
 ) {
+    // Get algorithm-specific tooltip
+    val algorithmTooltip = when (algorithm) {
+        "zstd" -> i18n["tooltip.compression.algorithm.zstd"]
+        "lz4" -> i18n["tooltip.compression.algorithm.lz4"]
+        else -> i18n["tooltip.compression.algorithm.none"]
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .widthIn(max = 600.dp)
     ) {
-        SectionCard(title = i18n["wizard.create.algorithm"]) {
+        SectionCard(
+            title = i18n["wizard.create.algorithm"],
+            tooltip = algorithmTooltip
+        ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("zstd" to "ZSTD", "lz4" to "LZ4", "none" to i18n["compression.none"]).forEach { (value, label) ->
                     SelectableChip(
@@ -637,7 +659,10 @@ private fun CompressionStep(
 
         if (algorithm != "none") {
             Spacer(modifier = Modifier.height(16.dp))
-            SectionCard(title = "${i18n["wizard.create.level"]}: $level") {
+            SectionCard(
+                title = "${i18n["wizard.create.level"]}: $level",
+                tooltip = i18n["tooltip.compression.level"]
+            ) {
                 val maxLevel = if (algorithm == "zstd") 22 else 17
                 Slider(
                     value = level.toFloat(),
@@ -653,7 +678,10 @@ private fun CompressionStep(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        SectionCard(title = i18n["wizard.create.chunk_size"]) {
+        SectionCard(
+            title = i18n["wizard.create.chunk_size"],
+            tooltip = i18n["tooltip.chunk_size"]
+        ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(64, 128, 256, 512, 1024).forEach { size ->
                     SelectableChip(
@@ -715,8 +743,17 @@ private fun EncryptionStep(
         }
 
         if (enabled) {
+            // Get encryption algorithm-specific tooltip
+            val encryptionTooltip = when (algorithm) {
+                "aes-256-gcm" -> i18n["tooltip.encryption.aes256gcm"]
+                else -> i18n["tooltip.encryption.chacha20"]
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
-            SectionCard(title = i18n["wizard.create.algorithm"]) {
+            SectionCard(
+                title = i18n["wizard.create.algorithm"],
+                tooltip = encryptionTooltip
+            ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(
                         "aes-256-gcm" to "AES-256-GCM",
@@ -854,6 +891,7 @@ private fun OutputStep(
 @Composable
 private fun SectionCard(
     title: String,
+    tooltip: String? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Column(
@@ -863,11 +901,19 @@ private fun SectionCard(
             .background(FluentTheme.colors.background.card.default)
             .padding(16.dp)
     ) {
-        Text(
-            text = title,
-            style = FluentTheme.typography.bodyStrong,
-            color = AetherColors.AccentPrimary
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = title,
+                style = FluentTheme.typography.bodyStrong,
+                color = AetherColors.AccentPrimary
+            )
+            if (tooltip != null) {
+                HelpTooltip(tooltip = tooltip)
+            }
+        }
         Spacer(modifier = Modifier.height(12.dp))
         content()
     }
