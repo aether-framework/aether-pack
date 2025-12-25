@@ -23,7 +23,6 @@
 package de.splatgames.aether.pack.gui.ui.screens.wizards.create
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -52,23 +51,11 @@ import com.konyaco.fluent.component.Icon
 import com.konyaco.fluent.component.Text
 import com.konyaco.fluent.icons.Icons
 import com.konyaco.fluent.icons.regular.*
-import de.splatgames.aether.pack.compression.CompressionRegistry
-import de.splatgames.aether.pack.core.AetherPackWriter
-import de.splatgames.aether.pack.core.ApackConfiguration
-import de.splatgames.aether.pack.core.format.EncryptionBlock
-import de.splatgames.aether.pack.core.format.FormatConstants
-import de.splatgames.aether.pack.crypto.Argon2idKeyDerivation
-import de.splatgames.aether.pack.crypto.EncryptionRegistry
-import de.splatgames.aether.pack.crypto.KeyWrapper
 import de.splatgames.aether.pack.gui.i18n.I18n
 import de.splatgames.aether.pack.gui.navigation.Navigator
 import de.splatgames.aether.pack.gui.state.AppState
 import de.splatgames.aether.pack.gui.ui.components.FileDragDropContainer
 import de.splatgames.aether.pack.gui.ui.theme.AetherColors
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.swing.JFileChooser
@@ -77,6 +64,9 @@ import javax.swing.filechooser.FileNameExtensionFilter
 /**
  * Wizard for creating new APACK archives.
  * Redesigned with Fluent Design System styling.
+ *
+ * State is persisted in AppState.createWizardState, allowing users to navigate away
+ * during archive creation and return to see progress or completion status.
  */
 @Composable
 fun CreateArchiveWizard(
@@ -84,26 +74,7 @@ fun CreateArchiveWizard(
     i18n: I18n,
     navigator: Navigator
 ) {
-    var currentStep by remember { mutableStateOf(0) }
-    var selectedFiles by remember { mutableStateOf<List<Path>>(emptyList()) }
-    var compressionAlgorithm by remember { mutableStateOf(appState.settings.defaultCompression) }
-    var compressionLevel by remember { mutableStateOf(appState.settings.defaultCompressionLevel) }
-    var chunkSizeKb by remember { mutableStateOf(appState.settings.defaultChunkSizeKb) }
-    var enableEncryption by remember { mutableStateOf(false) }
-    var encryptionAlgorithm by remember { mutableStateOf("aes-256-gcm") }
-    var password by remember { mutableStateOf("") }
-    var confirmPassword by remember { mutableStateOf("") }
-    var outputPath by remember { mutableStateOf<Path?>(null) }
-
-    // Creation state
-    var isCreating by remember { mutableStateOf(false) }
-    var creationComplete by remember { mutableStateOf(false) }
-    var creationError by remember { mutableStateOf<String?>(null) }
-    var creationProgress by remember { mutableStateOf(0f) }
-    var currentFileName by remember { mutableStateOf("") }
-    var isProcessingLargeFile by remember { mutableStateOf(false) }
-    var showOverwriteDialog by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+    val wizardState = appState.createWizardState
 
     val steps = listOf(
         i18n["wizard.create.step.files"],
@@ -112,176 +83,34 @@ fun CreateArchiveWizard(
         i18n["wizard.create.step.output"]
     )
 
-    // Function to start archive creation
+    // Function to start archive creation (uses application-level scope)
     val startCreation: () -> Unit = {
-        isCreating = true
-        showOverwriteDialog = false
-        scope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    // Collect all files to add (expand directories)
-                    val allFiles = mutableListOf<Pair<Path, String>>()
+        wizardState.startCreation(i18n)
+    }
 
-                    withContext(Dispatchers.Main) {
-                        currentFileName = i18n["wizard.create.scanning"]
-                        creationProgress = 0f
-                    }
-
-                    for (path in selectedFiles) {
-                        if (Files.isDirectory(path)) {
-                            // Walk directory and add all files with relative paths
-                            Files.walk(path).use { stream ->
-                                stream.filter { Files.isRegularFile(it) }.forEach { file ->
-                                    val relativeName = path.fileName.toString() + "/" +
-                                            path.relativize(file).toString().replace("\\", "/")
-                                    allFiles.add(file to relativeName)
-                                }
-                            }
-                        } else {
-                            allFiles.add(path to path.fileName.toString())
-                        }
-                    }
-
-                    // Build configuration
-                    val configBuilder = ApackConfiguration.builder()
-                        .chunkSize(chunkSizeKb * 1024)
-
-                    // Add compression if selected
-                    if (compressionAlgorithm != "none") {
-                        try {
-                            val compressionProvider = when (compressionAlgorithm) {
-                                "zstd" -> CompressionRegistry.zstd()
-                                "lz4" -> CompressionRegistry.lz4()
-                                else -> null
-                            }
-                            if (compressionProvider != null) {
-                                configBuilder.compression(compressionProvider, compressionLevel)
-                            }
-                        } catch (e: Exception) {
-                            // Compression provider not available, continue without compression
-                        }
-                    }
-
-                    // Add encryption if enabled
-                    if (enableEncryption && password.isNotEmpty()) {
-                        try {
-                            withContext(Dispatchers.Main) {
-                                currentFileName = i18n["wizard.create.deriving_key"]
-                            }
-
-                            // Get encryption provider
-                            val encryptionProvider = when (encryptionAlgorithm) {
-                                "aes-256-gcm" -> EncryptionRegistry.aes256Gcm()
-                                "chacha20-poly1305" -> EncryptionRegistry.chaCha20Poly1305()
-                                else -> EncryptionRegistry.aes256Gcm()
-                            }
-
-                            // Create KDF and derive key
-                            val kdf = Argon2idKeyDerivation()
-                            val salt = kdf.generateSalt()
-
-                            // Generate random Content Encryption Key (CEK)
-                            val cek = KeyWrapper.generateAes256Key()
-
-                            // Wrap CEK with password-derived key
-                            val wrappedKey = KeyWrapper.wrapWithPassword(
-                                cek,
-                                password.toCharArray(),
-                                salt,
-                                kdf
-                            )
-
-                            // Get cipher algorithm ID
-                            val cipherAlgorithmId = when (encryptionAlgorithm) {
-                                "aes-256-gcm" -> FormatConstants.ENCRYPTION_AES_256_GCM
-                                "chacha20-poly1305" -> FormatConstants.ENCRYPTION_CHACHA20_POLY1305
-                                else -> FormatConstants.ENCRYPTION_AES_256_GCM
-                            }
-
-                            // Build encryption block
-                            val encryptionBlock = EncryptionBlock.builder()
-                                .kdfAlgorithmId(FormatConstants.KDF_ARGON2ID)
-                                .cipherAlgorithmId(cipherAlgorithmId)
-                                .kdfIterations(3)
-                                .kdfMemory(65536) // 64 MB
-                                .kdfParallelism(4)
-                                .salt(salt)
-                                .wrappedKey(wrappedKey)
-                                .wrappedKeyTag(ByteArray(16)) // Tag is included in wrappedKey for AES Key Wrap
-                                .build()
-
-                            configBuilder.encryption(encryptionProvider, cek, encryptionBlock)
-                        } catch (e: Exception) {
-                            throw RuntimeException("Failed to setup encryption: ${e.message}", e)
-                        }
-                    }
-
-                    val config = configBuilder.build()
-
-                    // Calculate total size for accurate progress tracking
-                    val fileSizes = allFiles.map { (filePath, _) ->
-                        Files.size(filePath)
-                    }
-                    val totalBytes = fileSizes.sum()
-                    var processedBytes = 0L
-
-                    // Threshold for "large file" (10 MB)
-                    val largeFileThreshold = 10 * 1024 * 1024L
-
-                    // Create archive
-                    AetherPackWriter.create(outputPath!!, config).use { writer ->
-                        allFiles.forEachIndexed { index, (filePath, entryName) ->
-                            val fileSize = fileSizes[index]
-                            val isLarge = fileSize > largeFileThreshold
-
-                            // Update progress before processing each file
-                            withContext(Dispatchers.Main) {
-                                currentFileName = entryName
-                                isProcessingLargeFile = isLarge
-                                creationProgress = if (totalBytes > 0) {
-                                    processedBytes.toFloat() / totalBytes
-                                } else {
-                                    index.toFloat() / allFiles.size
-                                }
-                            }
-
-                            // Small delay to allow UI to update
-                            delay(10)
-
-                            writer.addEntry(entryName, filePath)
-
-                            // Update bytes processed
-                            processedBytes += fileSize
-
-                            // Update progress after file is added
-                            withContext(Dispatchers.Main) {
-                                isProcessingLargeFile = false
-                                creationProgress = if (totalBytes > 0) {
-                                    processedBytes.toFloat() / totalBytes
-                                } else {
-                                    (index + 1).toFloat() / allFiles.size
-                                }
-                            }
-                        }
-                    }
-                }
-                creationComplete = true
-            } catch (e: Exception) {
-                creationError = e.message ?: i18n["error.unknown"]
-            } finally {
-                isCreating = false
-            }
+    // Handle closing the wizard
+    val handleClose: () -> Unit = {
+        // Only reset if not currently creating and user explicitly closes
+        if (!wizardState.isCreating) {
+            wizardState.reset()
         }
+        navigator.goBack()
+    }
+
+    // Handle closing after completion (reset state)
+    val handleCloseComplete: () -> Unit = {
+        wizardState.reset()
+        navigator.goBack()
     }
 
     // Overwrite confirmation dialog
-    if (showOverwriteDialog) {
+    if (wizardState.showOverwriteDialog) {
         FileExistsDialog(
-            fileName = outputPath?.fileName?.toString() ?: "",
+            fileName = wizardState.outputPath?.fileName?.toString() ?: "",
             i18n = i18n,
             onOverwrite = { startCreation() },
             onChangeLocation = {
-                showOverwriteDialog = false
+                wizardState.showOverwriteDialog = false
                 // Open file chooser again
                 val chooser = JFileChooser().apply {
                     dialogTitle = i18n["wizard.create.output_file"]
@@ -292,10 +121,10 @@ fun CreateArchiveWizard(
                     if (!file.name.endsWith(".apack")) {
                         file = java.io.File(file.absolutePath + ".apack")
                     }
-                    outputPath = file.toPath()
+                    wizardState.outputPath = file.toPath()
                 }
             },
-            onCancel = { showOverwriteDialog = false }
+            onCancel = { wizardState.showOverwriteDialog = false }
         )
     }
 
@@ -303,16 +132,17 @@ fun CreateArchiveWizard(
         // Header
         WizardHeader(
             title = i18n["wizard.create.title"],
-            currentStep = currentStep,
+            currentStep = wizardState.currentStep,
             totalSteps = steps.size,
-            stepName = steps[currentStep],
-            onClose = { navigator.goBack() },
-            i18n = i18n
+            stepName = steps[wizardState.currentStep],
+            onClose = handleClose,
+            i18n = i18n,
+            showCloseButton = !wizardState.isCreating // Hide close button during creation
         )
 
         // Step Indicator
         StepIndicator(
-            currentStep = currentStep,
+            currentStep = wizardState.currentStep,
             steps = steps
         )
 
@@ -323,15 +153,15 @@ fun CreateArchiveWizard(
                 .padding(24.dp)
         ) {
             when {
-                creationComplete -> {
+                wizardState.creationComplete -> {
                     CreationSuccessContent(
-                        outputPath = outputPath!!,
+                        outputPath = wizardState.outputPath!!,
                         i18n = i18n,
-                        onClose = { navigator.goBack() },
+                        onClose = handleCloseComplete,
                         onOpenInExplorer = {
                             try {
                                 // Open the folder containing the file and select it
-                                val file = outputPath!!.toFile()
+                                val file = wizardState.outputPath!!.toFile()
                                 if (java.awt.Desktop.isDesktopSupported()) {
                                     java.awt.Desktop.getDesktop().open(file.parentFile)
                                 }
@@ -340,65 +170,69 @@ fun CreateArchiveWizard(
                             }
                         },
                         onOpenInApp = {
-                            navigator.navigate(de.splatgames.aether.pack.gui.navigation.Screen.Inspector(outputPath!!))
+                            val path = wizardState.outputPath!!
+                            wizardState.reset()
+                            navigator.navigate(de.splatgames.aether.pack.gui.navigation.Screen.Inspector(path))
                         }
                     )
                 }
-                creationError != null -> {
+                wizardState.creationError != null -> {
                     CreationErrorContent(
-                        message = creationError!!,
+                        message = wizardState.creationError!!,
                         i18n = i18n,
                         onRetry = {
-                            creationError = null
-                            isCreating = false
+                            wizardState.clearError()
                         }
                     )
                 }
-                isCreating -> {
+                wizardState.isCreating -> {
                     CreationProgressContent(
-                        progress = creationProgress,
-                        currentFileName = currentFileName,
-                        isIndeterminate = isProcessingLargeFile,
+                        progress = wizardState.creationProgress,
+                        currentFileName = wizardState.currentFileName,
+                        isIndeterminate = wizardState.isProcessingLargeFile,
                         i18n = i18n
                     )
                 }
-                else -> when (currentStep) {
+                else -> when (wizardState.currentStep) {
                     0 -> FileSelectionStep(
-                        selectedFiles = selectedFiles,
-                        onFilesChanged = { selectedFiles = it },
+                        selectedFiles = wizardState.selectedFiles,
+                        onFilesChanged = { newFiles ->
+                            wizardState.selectedFiles.clear()
+                            wizardState.selectedFiles.addAll(newFiles)
+                        },
                         onFileRemoved = { pathToRemove ->
-                            selectedFiles = selectedFiles.filter { it.toString() != pathToRemove.toString() }
+                            wizardState.selectedFiles.removeAll { it.toString() == pathToRemove.toString() }
                         },
                         i18n = i18n
                     )
                     1 -> CompressionStep(
-                        algorithm = compressionAlgorithm,
-                        onAlgorithmChanged = { compressionAlgorithm = it },
-                        level = compressionLevel,
-                        onLevelChanged = { compressionLevel = it },
-                        chunkSizeKb = chunkSizeKb,
-                        onChunkSizeChanged = { chunkSizeKb = it },
+                        algorithm = wizardState.compressionAlgorithm,
+                        onAlgorithmChanged = { wizardState.compressionAlgorithm = it },
+                        level = wizardState.compressionLevel,
+                        onLevelChanged = { wizardState.compressionLevel = it },
+                        chunkSizeKb = wizardState.chunkSizeKb,
+                        onChunkSizeChanged = { wizardState.chunkSizeKb = it },
                         i18n = i18n
                     )
                     2 -> EncryptionStep(
-                        enabled = enableEncryption,
-                        onEnabledChanged = { enableEncryption = it },
-                        algorithm = encryptionAlgorithm,
-                        onAlgorithmChanged = { encryptionAlgorithm = it },
-                        password = password,
-                        onPasswordChanged = { password = it },
-                        confirmPassword = confirmPassword,
-                        onConfirmPasswordChanged = { confirmPassword = it },
+                        enabled = wizardState.enableEncryption,
+                        onEnabledChanged = { wizardState.enableEncryption = it },
+                        algorithm = wizardState.encryptionAlgorithm,
+                        onAlgorithmChanged = { wizardState.encryptionAlgorithm = it },
+                        password = wizardState.password,
+                        onPasswordChanged = { wizardState.password = it },
+                        confirmPassword = wizardState.confirmPassword,
+                        onConfirmPasswordChanged = { wizardState.confirmPassword = it },
                         i18n = i18n
                     )
                     3 -> OutputStep(
-                        outputPath = outputPath,
-                        onOutputPathChanged = { outputPath = it },
-                        selectedFiles = selectedFiles,
-                        compressionAlgorithm = compressionAlgorithm,
-                        compressionLevel = compressionLevel,
-                        enableEncryption = enableEncryption,
-                        encryptionAlgorithm = encryptionAlgorithm,
+                        outputPath = wizardState.outputPath,
+                        onOutputPathChanged = { wizardState.outputPath = it },
+                        selectedFiles = wizardState.selectedFiles,
+                        compressionAlgorithm = wizardState.compressionAlgorithm,
+                        compressionLevel = wizardState.compressionLevel,
+                        enableEncryption = wizardState.enableEncryption,
+                        encryptionAlgorithm = wizardState.encryptionAlgorithm,
                         i18n = i18n
                     )
                 }
@@ -406,23 +240,23 @@ fun CreateArchiveWizard(
         }
 
         // Footer - hide when creating or complete
-        if (!isCreating && !creationComplete && creationError == null) {
+        if (!wizardState.isCreating && !wizardState.creationComplete && wizardState.creationError == null) {
             WizardFooter(
-                currentStep = currentStep,
+                currentStep = wizardState.currentStep,
                 totalSteps = steps.size,
-                canGoNext = when (currentStep) {
-                    0 -> selectedFiles.isNotEmpty()
-                    2 -> !enableEncryption || (password.isNotEmpty() && password == confirmPassword)
-                    3 -> outputPath != null
+                canGoNext = when (wizardState.currentStep) {
+                    0 -> wizardState.selectedFiles.isNotEmpty()
+                    2 -> !wizardState.enableEncryption || (wizardState.password.isNotEmpty() && wizardState.password == wizardState.confirmPassword)
+                    3 -> wizardState.outputPath != null
                     else -> true
                 },
-                onBack = { currentStep-- },
-                onNext = { currentStep++ },
-                onCancel = { navigator.goBack() },
+                onBack = { wizardState.currentStep-- },
+                onNext = { wizardState.currentStep++ },
+                onCancel = handleClose,
                 onFinish = {
                     // Check if file already exists
-                    if (outputPath != null && Files.exists(outputPath!!)) {
-                        showOverwriteDialog = true
+                    if (wizardState.outputPath != null && Files.exists(wizardState.outputPath!!)) {
+                        wizardState.showOverwriteDialog = true
                     } else {
                         startCreation()
                     }
@@ -440,7 +274,8 @@ private fun WizardHeader(
     totalSteps: Int,
     stepName: String,
     onClose: () -> Unit,
-    i18n: I18n
+    i18n: I18n,
+    showCloseButton: Boolean = true
 ) {
     Row(
         modifier = Modifier
@@ -460,18 +295,20 @@ private fun WizardHeader(
                 color = FluentTheme.colors.text.text.secondary
             )
         }
-        Box(
-            modifier = Modifier
-                .size(32.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .clickable(onClick = onClose),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Regular.Dismiss,
-                contentDescription = i18n["common.close"],
-                modifier = Modifier.size(20.dp)
-            )
+        if (showCloseButton) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .clickable(onClick = onClose),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Regular.Dismiss,
+                    contentDescription = i18n["common.close"],
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
     }
 }
@@ -1108,6 +945,14 @@ private fun CreationProgressContent(
                     color = FluentTheme.colors.text.text.secondary
                 )
             }
+
+            // Hint that user can navigate away
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                text = i18n["wizard.create.background_hint"],
+                style = FluentTheme.typography.caption,
+                color = FluentTheme.colors.text.text.disabled
+            )
         }
     }
 }
