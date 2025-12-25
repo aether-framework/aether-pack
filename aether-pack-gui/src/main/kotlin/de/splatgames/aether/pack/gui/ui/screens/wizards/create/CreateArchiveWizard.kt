@@ -44,8 +44,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.konyaco.fluent.FluentTheme
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import com.konyaco.fluent.component.Button
 import com.konyaco.fluent.component.Icon
 import com.konyaco.fluent.component.Text
@@ -725,12 +728,25 @@ private fun EncryptionStep(
 
             Spacer(modifier = Modifier.height(16.dp))
             SectionCard(title = i18n["wizard.create.password"]) {
+                var passwordVisible by remember { mutableStateOf(false) }
+                var confirmPasswordVisible by remember { mutableStateOf(false) }
+
                 OutlinedTextField(
                     value = password,
                     onValueChange = onPasswordChanged,
                     label = { androidx.compose.material3.Text(i18n["wizard.create.password"]) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                imageVector = if (passwordVisible) Icons.Regular.EyeOff else Icons.Regular.Eye,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    },
                     colors = outlinedTextFieldColors()
                 )
                 Spacer(modifier = Modifier.height(12.dp))
@@ -740,6 +756,16 @@ private fun EncryptionStep(
                     label = { androidx.compose.material3.Text(i18n["wizard.create.confirm_password"]) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
+                            Icon(
+                                imageVector = if (confirmPasswordVisible) Icons.Regular.EyeOff else Icons.Regular.Eye,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    },
                     isError = confirmPassword.isNotEmpty() && password != confirmPassword,
                     colors = outlinedTextFieldColors()
                 )
