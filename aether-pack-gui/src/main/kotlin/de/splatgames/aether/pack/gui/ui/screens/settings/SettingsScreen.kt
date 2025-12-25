@@ -24,10 +24,14 @@ package de.splatgames.aether.pack.gui.ui.screens.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.*
@@ -93,31 +97,25 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Language Setting
-            val languages = listOf(
-                Locale.ENGLISH to "English",
-                Locale.GERMAN to "Deutsch"
-            )
-            val currentLanguageName = languages.find { it.first.language == appState.settings.locale.language }?.second ?: "English"
+            // Language Setting - uses dropdown for better scalability
+            val availableLocales = remember { I18n.getAvailableLocales() }
+            val currentLocale = appState.settings.locale
+            val currentLanguageName = currentLocale.getDisplayLanguage(currentLocale)
+                .replaceFirstChar { it.uppercase() }
 
             SettingsRow(
                 icon = Icons.Regular.LocalLanguage,
                 title = i18n["settings.language"],
                 description = currentLanguageName
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    languages.forEach { (locale, name) ->
-                        val isSelected = locale.language == appState.settings.locale.language
-                        SelectableButton(
-                            selected = isSelected,
-                            onClick = {
-                                appState.settings.locale = locale
-                                appState.saveSettings()
-                            },
-                            label = name
-                        )
+                LanguageDropdown(
+                    selectedLocale = currentLocale,
+                    availableLocales = availableLocales,
+                    onLocaleSelected = { locale ->
+                        appState.settings.locale = locale
+                        appState.saveSettings()
                     }
-                }
+                )
             }
         }
 
@@ -370,5 +368,94 @@ private fun SettingsRow(
         }
         Spacer(modifier = Modifier.width(16.dp))
         action()
+    }
+}
+
+@Composable
+private fun LanguageDropdown(
+    selectedLocale: Locale,
+    availableLocales: List<Locale>,
+    onLocaleSelected: (Locale) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+
+    Box {
+        // Dropdown trigger button
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .background(
+                    if (isHovered) FluentTheme.colors.subtleFill.tertiary
+                    else FluentTheme.colors.subtleFill.secondary
+                )
+                .hoverable(interactionSource)
+                .clickable { expanded = true }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = selectedLocale.getDisplayLanguage(selectedLocale)
+                    .replaceFirstChar { it.uppercase() },
+                style = FluentTheme.typography.body
+            )
+            Icon(
+                imageVector = Icons.Regular.ChevronDown,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+
+        // Dropdown menu
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier
+                .background(FluentTheme.colors.background.solid.base)
+        ) {
+            availableLocales.forEach { locale ->
+                val itemInteractionSource = remember { MutableInteractionSource() }
+                val isItemHovered by itemInteractionSource.collectIsHoveredAsState()
+                val isSelected = locale.language == selectedLocale.language
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            when {
+                                isSelected -> AetherColors.AccentPrimary.copy(alpha = 0.15f)
+                                isItemHovered -> FluentTheme.colors.subtleFill.secondary
+                                else -> Color.Transparent
+                            }
+                        )
+                        .hoverable(itemInteractionSource)
+                        .clickable {
+                            onLocaleSelected(locale)
+                            expanded = false
+                        }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = locale.getDisplayLanguage(locale)
+                            .replaceFirstChar { it.uppercase() },
+                        style = FluentTheme.typography.body,
+                        color = if (isSelected) AetherColors.AccentPrimary
+                               else FluentTheme.colors.text.text.primary
+                    )
+                    if (isSelected) {
+                        Icon(
+                            imageVector = Icons.Regular.Checkmark,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = AetherColors.AccentPrimary
+                        )
+                    }
+                }
+            }
+        }
     }
 }

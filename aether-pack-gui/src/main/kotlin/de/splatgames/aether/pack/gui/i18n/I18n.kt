@@ -73,11 +73,12 @@ class I18n private constructor(
 
     companion object {
         /**
-         * Supported locales.
+         * Supported locales (bundled with the application).
          */
         val SUPPORTED_LOCALES = listOf(
             Locale.ENGLISH,
-            Locale.GERMAN
+            Locale.GERMAN,
+            Locale.JAPANESE
         )
 
         /**
