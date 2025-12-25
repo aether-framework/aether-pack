@@ -68,6 +68,9 @@ fun AetherPackApp(appState: AppState, i18n: I18n) {
     }
 
     AetherFluentTheme(darkTheme = appState.settings.isDarkTheme) {
+        // Disable global APACK drop handler when in Create Wizard
+        val isInCreateWizard = navigator.currentScreen is Screen.CreateWizard
+
         DragDropContainer(
             onFilesDropped = { files ->
                 // Open the first dropped archive
@@ -76,6 +79,7 @@ fun AetherPackApp(appState: AppState, i18n: I18n) {
                 }
             },
             i18n = i18n,
+            enabled = !isInCreateWizard,
             modifier = Modifier
                 .fillMaxSize()
                 .focusRequester(focusRequester)

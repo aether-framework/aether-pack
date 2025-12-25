@@ -23,6 +23,7 @@
 package de.splatgames.aether.pack.gui.ui.screens.wizards.create
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -62,6 +63,7 @@ import de.splatgames.aether.pack.crypto.KeyWrapper
 import de.splatgames.aether.pack.gui.i18n.I18n
 import de.splatgames.aether.pack.gui.navigation.Navigator
 import de.splatgames.aether.pack.gui.state.AppState
+import de.splatgames.aether.pack.gui.ui.components.FileDragDropContainer
 import de.splatgames.aether.pack.gui.ui.theme.AetherColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -579,106 +581,128 @@ private fun FileSelectionStep(
     onFileRemoved: (Path) -> Unit,
     i18n: I18n
 ) {
-    Column {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = {
-                val chooser = JFileChooser().apply {
-                    isMultiSelectionEnabled = true
-                    dialogTitle = i18n["wizard.create.add_files"]
-                }
-                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                    val existingPaths = selectedFiles.map { it.toString() }.toSet()
-                    val newFiles = chooser.selectedFiles
-                        .map { it.toPath() }
-                        .filter { it.toString() !in existingPaths }
-                    onFilesChanged(selectedFiles + newFiles)
-                }
-            }) {
-                Icon(
-                    imageVector = Icons.Regular.Add,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(i18n["wizard.create.add_files"])
+    FileDragDropContainer(
+        onFilesDropped = { droppedFiles ->
+            val existingPaths = selectedFiles.map { it.toString() }.toSet()
+            val newFiles = droppedFiles.filter { it.toString() !in existingPaths }
+            if (newFiles.isNotEmpty()) {
+                onFilesChanged(selectedFiles + newFiles)
             }
-
-            Button(onClick = {
-                val chooser = JFileChooser().apply {
-                    fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-                    dialogTitle = i18n["wizard.create.add_folder"]
+        },
+        i18n = i18n,
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    val chooser = JFileChooser().apply {
+                        isMultiSelectionEnabled = true
+                        dialogTitle = i18n["wizard.create.add_files"]
+                    }
+                    if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                        val existingPaths = selectedFiles.map { it.toString() }.toSet()
+                        val newFiles = chooser.selectedFiles
+                            .map { it.toPath() }
+                            .filter { it.toString() !in existingPaths }
+                        onFilesChanged(selectedFiles + newFiles)
+                    }
+                }) {
+                    Icon(
+                        imageVector = Icons.Regular.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(i18n["wizard.create.add_files"])
                 }
-                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                    val newPath = chooser.selectedFile.toPath()
-                    val existingPaths = selectedFiles.map { it.toString() }.toSet()
-                    if (newPath.toString() !in existingPaths) {
-                        onFilesChanged(selectedFiles + newPath)
+
+                Button(onClick = {
+                    val chooser = JFileChooser().apply {
+                        fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+                        dialogTitle = i18n["wizard.create.add_folder"]
+                    }
+                    if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                        val newPath = chooser.selectedFile.toPath()
+                        val existingPaths = selectedFiles.map { it.toString() }.toSet()
+                        if (newPath.toString() !in existingPaths) {
+                            onFilesChanged(selectedFiles + newPath)
+                        }
+                    }
+                }) {
+                    Icon(
+                        imageVector = Icons.Regular.Folder,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(i18n["wizard.create.add_folder"])
+                }
+
+                if (selectedFiles.isNotEmpty()) {
+                    Button(onClick = { onFilesChanged(emptyList()) }) {
+                        Text(i18n["wizard.create.clear"])
                     }
                 }
-            }) {
-                Icon(
-                    imageVector = Icons.Regular.Folder,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(i18n["wizard.create.add_folder"])
             }
 
-            if (selectedFiles.isNotEmpty()) {
-                Button(onClick = { onFilesChanged(emptyList()) }) {
-                    Text(i18n["wizard.create.clear"])
-                }
-            }
-        }
+            Spacer(modifier = Modifier.height(16.dp))
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        if (selectedFiles.isEmpty()) {
+            // File list area
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(FluentTheme.colors.background.card.default),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Regular.DocumentAdd,
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp),
-                        tint = FluentTheme.colors.text.text.disabled
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = i18n["wizard.create.no_files"],
-                        style = FluentTheme.typography.body,
-                        color = FluentTheme.colors.text.text.secondary
-                    )
-                }
-            }
-        } else {
-            Text(
-                text = i18n.format("wizard.create.files_count", selectedFiles.size),
-                style = FluentTheme.typography.bodyStrong,
-                color = AetherColors.AccentPrimary
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-
-            LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .clip(RoundedCornerShape(4.dp))
                     .background(FluentTheme.colors.background.card.default)
             ) {
-                items(
-                    items = selectedFiles,
-                    key = { it.toString() }
-                ) { path ->
-                    FileListItem(
-                        path = path,
-                        onRemove = { onFileRemoved(path) }
-                    )
+                if (selectedFiles.isEmpty()) {
+                    // Empty state with hint
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Regular.DocumentAdd,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = FluentTheme.colors.text.text.disabled
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = i18n["wizard.create.no_files"],
+                                style = FluentTheme.typography.body,
+                                color = FluentTheme.colors.text.text.secondary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = i18n["wizard.create.drag_hint"],
+                                style = FluentTheme.typography.caption,
+                                color = FluentTheme.colors.text.text.disabled
+                            )
+                        }
+                    }
+                } else {
+                    // File list
+                    Column(modifier = Modifier.fillMaxSize().padding(8.dp)) {
+                        Text(
+                            text = i18n.format("wizard.create.files_count", selectedFiles.size),
+                            style = FluentTheme.typography.bodyStrong,
+                            color = AetherColors.AccentPrimary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        LazyColumn(modifier = Modifier.fillMaxSize()) {
+                            items(
+                                items = selectedFiles,
+                                key = { it.toString() }
+                            ) { path ->
+                                FileListItem(
+                                    path = path,
+                                    onRemove = { onFileRemoved(path) }
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
