@@ -486,7 +486,8 @@ private fun WizardFooter(
             .fillMaxWidth()
             .background(FluentTheme.colors.background.solid.base)
             .padding(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Button(onClick = onCancel) {
             Text(i18n["wizard.cancel"])
@@ -1141,7 +1142,8 @@ private fun AccentButton(
     val backgroundColor = if (enabled) AetherColors.AccentPrimary else AetherColors.AccentPrimary.copy(alpha = 0.5f)
 
     androidx.compose.runtime.CompositionLocalProvider(
-        androidx.compose.material3.LocalContentColor provides Color.White
+        androidx.compose.material3.LocalContentColor provides Color.White,
+        com.konyaco.fluent.LocalContentColor provides Color.White
     ) {
         Row(
             modifier = modifier

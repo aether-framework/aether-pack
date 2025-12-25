@@ -255,7 +255,8 @@ fun VerifyWizard(
                     .fillMaxWidth()
                     .background(FluentTheme.colors.background.solid.base)
                     .padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Button(onClick = { navigator.goBack() }) {
                     Text(i18n["common.cancel"])
@@ -518,14 +519,15 @@ private fun AccentButton(
     val backgroundColor = if (enabled) AetherColors.AccentPrimary else AetherColors.AccentPrimary.copy(alpha = 0.5f)
 
     androidx.compose.runtime.CompositionLocalProvider(
-        androidx.compose.material3.LocalContentColor provides Color.White
+        androidx.compose.material3.LocalContentColor provides Color.White,
+        com.konyaco.fluent.LocalContentColor provides Color.White
     ) {
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(4.dp))
                 .background(backgroundColor)
                 .clickable(enabled = enabled, onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             content = content
         )
