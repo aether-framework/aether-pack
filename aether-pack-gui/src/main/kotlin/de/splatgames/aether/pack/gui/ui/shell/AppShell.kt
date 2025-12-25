@@ -258,11 +258,11 @@ private fun SidebarHeader(
     onToggle: () -> Unit,
     i18n: I18n
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isHovered by interactionSource.collectIsHoveredAsState()
+    val buttonInteractionSource = remember { MutableInteractionSource() }
+    val isButtonHovered by buttonInteractionSource.collectIsHoveredAsState()
 
     val hamburgerBg by animateColorAsState(
-        targetValue = if (isHovered)
+        targetValue = if (isButtonHovered)
             FluentTheme.colors.subtleFill.secondary
         else
             Color.Transparent,
@@ -286,11 +286,11 @@ private fun SidebarHeader(
                     .background(hamburgerBg)
                     .pointerHoverIcon(PointerIcon.Hand)
                     .clickable(
-                        interactionSource = interactionSource,
+                        interactionSource = buttonInteractionSource,
                         indication = null,
                         onClick = onToggle
                     )
-                    .hoverable(interactionSource),
+                    .hoverable(buttonInteractionSource),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -301,11 +301,11 @@ private fun SidebarHeader(
                 )
             }
 
-            // Show tooltip on hover
-            if (isHovered) {
+            // Tooltip - positioned right of sidebar to avoid overlap with button
+            if (isButtonHovered && !isExpanded) {
                 Popup(
-                    alignment = Alignment.CenterEnd,
-                    offset = androidx.compose.ui.unit.IntOffset(44, 0),
+                    alignment = Alignment.TopStart,
+                    offset = androidx.compose.ui.unit.IntOffset(56, 8),
                     properties = PopupProperties(focusable = false)
                 ) {
                     Box(
@@ -313,13 +313,10 @@ private fun SidebarHeader(
                             .shadow(4.dp, RoundedCornerShape(4.dp))
                             .clip(RoundedCornerShape(4.dp))
                             .background(FluentTheme.colors.background.solid.base)
-                            .padding(8.dp)
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            text = if (isExpanded)
-                                i18n["nav.collapse"] ?: "Collapse sidebar"
-                            else
-                                i18n["nav.expand"] ?: "Expand sidebar",
+                            text = i18n["nav.expand"] ?: "Expand sidebar",
                             style = FluentTheme.typography.caption
                         )
                     }
@@ -352,14 +349,17 @@ private fun NavItem(
     label: String,
     isExpanded: Boolean
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isHovered by interactionSource.collectIsHoveredAsState()
+    val navInteractionSource = remember { MutableInteractionSource() }
+    val isNavHovered by navInteractionSource.collectIsHoveredAsState()
+
+    // Show tooltip when hovering over nav item (only when collapsed)
+    val showTooltip = !isExpanded && isNavHovered
 
     // Animated background color
     val backgroundColor by animateColorAsState(
         targetValue = when {
             selected -> FluentTheme.colors.subtleFill.secondary
-            isHovered -> FluentTheme.colors.subtleFill.tertiary
+            isNavHovered -> FluentTheme.colors.subtleFill.tertiary
             else -> Color.Transparent
         },
         animationSpec = tween(durationMillis = FluentTokens.Animation.fast)
@@ -386,31 +386,56 @@ private fun NavItem(
                 .background(backgroundColor)
                 .pointerHoverIcon(PointerIcon.Hand)
                 .clickable(
-                    interactionSource = interactionSource,
+                    interactionSource = navInteractionSource,
                     indication = null,
                     onClick = onClick
                 )
-                .hoverable(interactionSource)
-                .padding(horizontal = FluentTokens.Spacing.sm),
-            verticalAlignment = Alignment.CenterVertically
+                .hoverable(navInteractionSource)
+                .padding(horizontal = if (isExpanded) FluentTokens.Spacing.sm else FluentTokens.Spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = if (isExpanded) Arrangement.Start else Arrangement.Center
         ) {
-            // Animated accent indicator
+            // Animated accent indicator (only when expanded)
+            if (isExpanded) {
+                Box(
+                    modifier = Modifier
+                        .width(FluentTokens.Components.accentIndicatorWidth)
+                        .height(indicatorHeight)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(AetherColors.AccentPrimary)
+                )
+                Spacer(modifier = Modifier.width(FluentTokens.Spacing.md))
+            }
+
+            // Icon - always visible and properly sized
             Box(
-                modifier = Modifier
-                    .width(FluentTokens.Components.accentIndicatorWidth)
-                    .height(indicatorHeight)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(AetherColors.AccentPrimary)
-            )
+                modifier = if (!isExpanded) {
+                    Modifier.size(FluentTokens.Sidebar.itemHeight - 8.dp)
+                } else {
+                    Modifier
+                },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = destination.icon,
+                    contentDescription = if (!isExpanded) label else null,
+                    modifier = Modifier.size(FluentTokens.Components.iconSizeMedium),
+                    tint = iconColor
+                )
 
-            Spacer(modifier = Modifier.width(if (isExpanded) FluentTokens.Spacing.md else FluentTokens.Spacing.sm))
-
-            Icon(
-                imageVector = destination.icon,
-                contentDescription = if (!isExpanded) label else null,
-                modifier = Modifier.size(FluentTokens.Components.iconSizeMedium),
-                tint = iconColor
-            )
+                // Small accent dot when collapsed and selected
+                if (!isExpanded && selected) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .offset(x = (-12).dp)
+                            .width(FluentTokens.Components.accentIndicatorWidth)
+                            .height(indicatorHeight)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(AetherColors.AccentPrimary)
+                    )
+                }
+            }
 
             // Label (only when expanded)
             AnimatedVisibility(
@@ -431,18 +456,14 @@ private fun NavItem(
         }
     }
 
-    // Show tooltip when collapsed and hovered
     Box {
         content()
 
-        // Tooltip popup when collapsed
-        if (!isExpanded && isHovered) {
+        // Tooltip popup when collapsed - positioned right of sidebar
+        if (showTooltip) {
             Popup(
-                alignment = Alignment.CenterEnd,
-                offset = androidx.compose.ui.unit.IntOffset(
-                    (FluentTokens.Sidebar.collapsedWidth.value + 8).toInt(),
-                    0
-                ),
+                alignment = Alignment.TopStart,
+                offset = androidx.compose.ui.unit.IntOffset(56, 8),
                 properties = PopupProperties(focusable = false)
             ) {
                 Box(
@@ -450,7 +471,7 @@ private fun NavItem(
                         .shadow(4.dp, RoundedCornerShape(4.dp))
                         .clip(RoundedCornerShape(4.dp))
                         .background(FluentTheme.colors.background.solid.base)
-                        .padding(8.dp)
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Text(
                         text = label,

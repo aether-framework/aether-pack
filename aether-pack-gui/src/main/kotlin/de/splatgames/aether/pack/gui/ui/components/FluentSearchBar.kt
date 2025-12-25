@@ -44,9 +44,12 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.konyaco.fluent.FluentTheme
@@ -158,6 +161,19 @@ fun FluentSearchBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
+                    .onKeyEvent { keyEvent ->
+                        // Handle SHIFT+BACKSPACE as regular backspace
+                        if (keyEvent.type == KeyEventType.KeyDown &&
+                            keyEvent.key == Key.Backspace &&
+                            keyEvent.isShiftPressed &&
+                            value.isNotEmpty()
+                        ) {
+                            onValueChange(value.dropLast(1))
+                            true
+                        } else {
+                            false
+                        }
+                    }
             )
         }
 
@@ -262,6 +278,19 @@ fun FluentCompactSearchBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
+                    .onKeyEvent { keyEvent ->
+                        // Handle SHIFT+BACKSPACE as regular backspace
+                        if (keyEvent.type == KeyEventType.KeyDown &&
+                            keyEvent.key == Key.Backspace &&
+                            keyEvent.isShiftPressed &&
+                            value.isNotEmpty()
+                        ) {
+                            onValueChange(value.dropLast(1))
+                            true
+                        } else {
+                            false
+                        }
+                    }
             )
         }
 
