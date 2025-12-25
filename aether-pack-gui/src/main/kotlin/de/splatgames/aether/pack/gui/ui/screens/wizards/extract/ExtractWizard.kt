@@ -50,7 +50,10 @@ import com.konyaco.fluent.icons.regular.*
 import de.splatgames.aether.pack.gui.i18n.I18n
 import de.splatgames.aether.pack.gui.navigation.Navigator
 import de.splatgames.aether.pack.gui.state.AppState
+import de.splatgames.aether.pack.gui.ui.components.FluentAccentButton
+import de.splatgames.aether.pack.gui.ui.components.FluentSectionCard
 import de.splatgames.aether.pack.gui.ui.theme.AetherColors
+import de.splatgames.aether.pack.gui.ui.theme.FluentTokens
 import de.splatgames.aether.pack.gui.util.ArchiveUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -170,7 +173,7 @@ fun ExtractWizard(
                             .widthIn(max = 600.dp)
                     ) {
                         // Output directory
-                        SectionCard(title = i18n["wizard.extract.output_dir"]) {
+                        FluentSectionCard(title = i18n["wizard.extract.output_dir"]) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 OutlinedTextField(
                                     value = outputDir.toString(),
@@ -197,7 +200,7 @@ fun ExtractWizard(
                         // Password field if encrypted
                         if (isEncrypted) {
                             Spacer(modifier = Modifier.height(16.dp))
-                            SectionCard(title = i18n["wizard.extract.password_required"]) {
+                            FluentSectionCard(title = i18n["wizard.extract.password_required"]) {
                                 Text(
                                     text = i18n["wizard.extract.enter_password"],
                                     style = FluentTheme.typography.caption,
@@ -218,7 +221,7 @@ fun ExtractWizard(
 
                         // Options
                         Spacer(modifier = Modifier.height(16.dp))
-                        SectionCard(title = i18n["settings.behavior"]) {
+                        FluentSectionCard(title = i18n["settings.behavior"]) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -260,7 +263,7 @@ fun ExtractWizard(
                     Text(i18n["wizard.cancel"])
                 }
 
-                AccentButton(
+                FluentAccentButton(
                     onClick = {
                         isExtracting = true
                         extractionProgress = 0f
@@ -361,53 +364,6 @@ fun ExtractWizard(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun SectionCard(
-    title: String,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
-            .background(FluentTheme.colors.background.card.default)
-            .padding(16.dp)
-    ) {
-        Text(
-            text = title,
-            style = FluentTheme.typography.bodyStrong,
-            color = AetherColors.AccentPrimary
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        content()
-    }
-}
-
-@Composable
-private fun AccentButton(
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-    content: @Composable RowScope.() -> Unit
-) {
-    val backgroundColor = if (enabled) AetherColors.AccentPrimary else AetherColors.AccentPrimary.copy(alpha = 0.5f)
-
-    androidx.compose.runtime.CompositionLocalProvider(
-        androidx.compose.material3.LocalContentColor provides Color.White,
-        com.konyaco.fluent.LocalContentColor provides Color.White
-    ) {
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(4.dp))
-                .background(backgroundColor)
-                .pointerHoverIcon(PointerIcon.Hand)
-                .clickable(enabled = enabled, onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            content = content
-        )
     }
 }
 

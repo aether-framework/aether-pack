@@ -22,6 +22,9 @@
 
 package de.splatgames.aether.pack.gui.ui.screens.inspector
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
@@ -57,7 +60,10 @@ import de.splatgames.aether.pack.gui.navigation.Navigator
 import de.splatgames.aether.pack.gui.navigation.Screen
 import de.splatgames.aether.pack.gui.state.AppState
 import de.splatgames.aether.pack.gui.state.ArchiveState
+import de.splatgames.aether.pack.gui.ui.components.FluentCard
 import de.splatgames.aether.pack.gui.ui.theme.AetherColors
+import de.splatgames.aether.pack.gui.ui.theme.FluentTokens
+import de.splatgames.aether.pack.gui.ui.theme.animatedElevation
 import de.splatgames.aether.pack.gui.util.FormatUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -66,7 +72,7 @@ import java.nio.file.Path
 
 /**
  * Inspector screen for viewing and analyzing APACK archives.
- * Redesigned with Fluent Design System styling.
+ * Redesigned with modern Fluent Design System styling.
  */
 @Composable
 fun InspectorScreen(
@@ -103,7 +109,7 @@ fun InspectorScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Toolbar
+        // Toolbar with subtle elevation
         InspectorToolbar(
             archivePath = archivePath,
             onBack = { navigator.goBack() },
@@ -121,7 +127,12 @@ fun InspectorScreen(
                 LoadingContent(i18n)
             }
             else -> {
-                Row(modifier = Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(FluentTokens.Spacing.lg),
+                    horizontalArrangement = Arrangement.spacedBy(FluentTokens.Spacing.lg)
+                ) {
                     // Entry list (left panel)
                     EntryList(
                         entries = archiveState!!.entries,
@@ -134,45 +145,37 @@ fun InspectorScreen(
                     // Right panel - Archive info and entry details
                     Column(
                         modifier = Modifier
-                            .width(320.dp)
-                            .fillMaxHeight()
-                            .background(FluentTheme.colors.background.solid.base)
-                            .padding(16.dp)
+                            .width(340.dp)
+                            .fillMaxHeight(),
+                        verticalArrangement = Arrangement.spacedBy(FluentTokens.Spacing.lg)
                     ) {
                         ArchiveInfoPanel(archiveState!!, i18n)
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Divider
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(1.dp)
-                                .background(FluentTheme.colors.stroke.surface.default)
-                        )
-
-                        Spacer(modifier = Modifier.height(16.dp))
 
                         if (selectedEntry != null) {
                             EntryDetailsPanel(selectedEntry!!, i18n)
                         } else {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
+                            // Empty state placeholder
+                            FluentCard(
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(
-                                        imageVector = Icons.Regular.DocumentBulletList,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(32.dp),
-                                        tint = FluentTheme.colors.text.text.disabled
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = i18n["inspector.select_entry"],
-                                        style = FluentTheme.typography.body,
-                                        color = FluentTheme.colors.text.text.secondary
-                                    )
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Icon(
+                                            imageVector = Icons.Regular.DocumentBulletList,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(FluentTokens.Components.iconSizeLarge),
+                                            tint = FluentTheme.colors.text.text.disabled
+                                        )
+                                        Spacer(modifier = Modifier.height(FluentTokens.Spacing.sm))
+                                        Text(
+                                            text = i18n["inspector.select_entry"],
+                                            style = FluentTheme.typography.body,
+                                            color = FluentTheme.colors.text.text.secondary
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -191,39 +194,63 @@ private fun InspectorToolbar(
     onVerify: () -> Unit,
     i18n: I18n
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+
+    val backButtonBg by animateColorAsState(
+        targetValue = if (isHovered)
+            FluentTheme.colors.subtleFill.secondary
+        else
+            Color.Transparent,
+        animationSpec = tween(FluentTokens.Animation.fast),
+        label = "backButtonBg"
+    )
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(FluentTheme.colors.background.solid.base)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .animatedElevation(
+                isHovered = false,
+                restLevel = FluentTokens.Elevation.level1,
+                hoverLevel = FluentTokens.Elevation.level1,
+                cornerRadius = 0.dp
+            )
+            .background(AetherColors.SidebarBackground)
+            .padding(horizontal = FluentTokens.Spacing.lg, vertical = FluentTokens.Spacing.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Back button
         Box(
             modifier = Modifier
-                .size(32.dp)
-                .clip(RoundedCornerShape(4.dp))
+                .size(36.dp)
+                .clip(RoundedCornerShape(FluentTokens.Corner.small))
+                .background(backButtonBg)
                 .pointerHoverIcon(PointerIcon.Hand)
-                .clickable(onClick = onBack),
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onBack
+                )
+                .hoverable(interactionSource),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Regular.ArrowLeft,
                 contentDescription = i18n["common.close"],
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(FluentTokens.Components.iconSizeMedium)
             )
         }
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(FluentTokens.Spacing.md))
 
-        // Archive name
+        // Archive name with icon
         Icon(
             imageVector = Icons.Regular.Archive,
             contentDescription = null,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(FluentTokens.Components.iconSizeMedium),
             tint = AetherColors.AccentPrimary
         )
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(FluentTokens.Spacing.sm))
         Text(
             text = archivePath.fileName.toString(),
             style = FluentTheme.typography.subtitle,
@@ -235,21 +262,21 @@ private fun InspectorToolbar(
             Icon(
                 imageVector = Icons.Regular.ArrowDownload,
                 contentDescription = null,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(FluentTokens.Components.iconSizeSmall)
             )
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(FluentTokens.Spacing.sm))
             Text(i18n["inspector.toolbar.extract"])
         }
 
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(FluentTokens.Spacing.sm))
 
         Button(onClick = onVerify) {
             Icon(
                 imageVector = Icons.Regular.Checkmark,
                 contentDescription = null,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(FluentTokens.Components.iconSizeSmall)
             )
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(FluentTokens.Spacing.sm))
             Text(i18n["inspector.toolbar.verify"])
         }
     }
@@ -263,9 +290,7 @@ private fun EntryList(
     i18n: I18n,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier.padding(16.dp)
-    ) {
+    Column(modifier = modifier) {
         // Section title
         Text(
             text = "${i18n["inspector.entries"]} (${entries.size})",
@@ -273,58 +298,64 @@ private fun EntryList(
             color = AetherColors.AccentPrimary
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(FluentTokens.Spacing.md))
 
-        // Table container
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(RoundedCornerShape(4.dp))
-                .background(FluentTheme.colors.background.card.default)
+        // Table container with FluentCard styling
+        FluentCard(
+            modifier = Modifier.fillMaxSize(),
+            elevation = FluentTokens.Elevation.level1
         ) {
-            // Header row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(FluentTheme.colors.subtleFill.secondary)
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = i18n["entry.name"],
-                    style = FluentTheme.typography.caption,
-                    color = FluentTheme.colors.text.text.secondary,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    text = i18n["entry.original_size"],
-                    style = FluentTheme.typography.caption,
-                    color = FluentTheme.colors.text.text.secondary,
-                    modifier = Modifier.width(90.dp)
-                )
-                Text(
-                    text = i18n["entry.ratio"],
-                    style = FluentTheme.typography.caption,
-                    color = FluentTheme.colors.text.text.secondary,
-                    modifier = Modifier.width(60.dp)
-                )
-                Text(
-                    text = "Flags",
-                    style = FluentTheme.typography.caption,
-                    color = FluentTheme.colors.text.text.secondary,
-                    modifier = Modifier.width(60.dp)
-                )
-            }
-
-            LazyColumn(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(entries) { entry ->
-                    EntryListItem(
-                        entry = entry,
-                        isSelected = entry == selectedEntry,
-                        onClick = { onSelectEntry(entry) }
+            Column(modifier = Modifier.padding(0.dp)) {
+                // Header row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(FluentTheme.colors.subtleFill.secondary)
+                        .padding(horizontal = FluentTokens.Spacing.lg, vertical = FluentTokens.Spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = i18n["entry.name"],
+                        style = FluentTheme.typography.caption,
+                        color = FluentTheme.colors.text.text.secondary,
+                        modifier = Modifier.weight(1f)
                     )
+                    Text(
+                        text = i18n["entry.original_size"],
+                        style = FluentTheme.typography.caption,
+                        color = FluentTheme.colors.text.text.secondary,
+                        modifier = Modifier.width(90.dp)
+                    )
+                    Text(
+                        text = i18n["entry.ratio"],
+                        style = FluentTheme.typography.caption,
+                        color = FluentTheme.colors.text.text.secondary,
+                        modifier = Modifier.width(60.dp)
+                    )
+                    Text(
+                        text = "Flags",
+                        style = FluentTheme.typography.caption,
+                        color = FluentTheme.colors.text.text.secondary,
+                        modifier = Modifier.width(70.dp)
+                    )
+                }
+
+                // Divider
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(FluentTokens.Components.dividerThickness)
+                        .background(FluentTheme.colors.stroke.divider.default)
+                )
+
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(entries) { entry ->
+                        EntryListItem(
+                            entry = entry,
+                            isSelected = entry == selectedEntry,
+                            onClick = { onSelectEntry(entry) }
+                        )
+                    }
                 }
             }
         }
@@ -346,29 +377,36 @@ private fun EntryListItem(
         1.0
     }
 
-    val backgroundColor = when {
-        isSelected -> AetherColors.AccentPrimary.copy(alpha = 0.15f)
-        isHovered -> FluentTheme.colors.subtleFill.secondary
-        else -> Color.Transparent
-    }
+    val backgroundColor by animateColorAsState(
+        targetValue = when {
+            isSelected -> AetherColors.AccentPrimary.copy(alpha = 0.15f)
+            isHovered -> FluentTheme.colors.subtleFill.secondary
+            else -> Color.Transparent
+        },
+        animationSpec = tween(FluentTokens.Animation.fast),
+        label = "entryBg"
+    )
+
+    // Animated indicator width
+    val indicatorWidth by animateDpAsState(
+        targetValue = if (isSelected) FluentTokens.Components.accentIndicatorWidth else 0.dp,
+        animationSpec = tween(FluentTokens.Animation.fast),
+        label = "indicatorWidth"
+    )
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(backgroundColor)
-            .then(
-                if (isSelected) {
-                    Modifier.drawBehind {
-                        drawRect(
-                            color = AetherColors.AccentPrimary,
-                            topLeft = Offset.Zero,
-                            size = Size(3.dp.toPx(), size.height)
-                        )
-                    }
-                } else {
-                    Modifier
+            .drawBehind {
+                if (indicatorWidth.toPx() > 0) {
+                    drawRect(
+                        color = AetherColors.AccentPrimary,
+                        topLeft = Offset.Zero,
+                        size = Size(indicatorWidth.toPx(), size.height)
+                    )
                 }
-            )
+            }
             .pointerHoverIcon(PointerIcon.Hand)
             .clickable(
                 interactionSource = interactionSource,
@@ -376,7 +414,7 @@ private fun EntryListItem(
                 onClick = onClick
             )
             .hoverable(interactionSource)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = FluentTokens.Spacing.lg, vertical = FluentTokens.Spacing.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // File icon and name
@@ -387,10 +425,10 @@ private fun EntryListItem(
             Icon(
                 imageVector = Icons.Regular.Document,
                 contentDescription = null,
-                modifier = Modifier.size(16.dp),
+                modifier = Modifier.size(FluentTokens.Components.iconSizeSmall),
                 tint = if (isSelected) AetherColors.AccentPrimary else FluentTheme.colors.text.text.secondary
             )
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(FluentTokens.Spacing.sm))
             Text(
                 text = entry.name,
                 style = FluentTheme.typography.body,
@@ -415,10 +453,10 @@ private fun EntryListItem(
             modifier = Modifier.width(60.dp)
         )
 
-        // Flags - use actual IDs instead of flags to avoid inconsistency
+        // Flags
         Row(
-            modifier = Modifier.width(60.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            modifier = Modifier.width(70.dp),
+            horizontalArrangement = Arrangement.spacedBy(FluentTokens.Spacing.xs)
         ) {
             if (entry.compressionId != 0) {
                 FlagBadge("C", AetherColors.Compressed)
@@ -438,7 +476,7 @@ private fun FlagBadge(label: String, color: Color) {
     Box(
         modifier = Modifier
             .size(18.dp)
-            .clip(RoundedCornerShape(2.dp))
+            .clip(RoundedCornerShape(FluentTokens.Corner.small))
             .background(color.copy(alpha = 0.2f)),
         contentAlignment = Alignment.Center
     ) {
@@ -452,17 +490,16 @@ private fun FlagBadge(label: String, color: Color) {
 
 @Composable
 private fun ArchiveInfoPanel(state: ArchiveState, i18n: I18n) {
-    // Get compression algorithm from first entry with actual compression (compressionId != 0)
+    // Get compression algorithm from first entry with actual compression
     val compressionAlgorithm = state.entries
         .firstOrNull { it.compressionId != 0 }
         ?.let { FormatUtils.getCompressionName(it.compressionId) }
 
-    // Get encryption algorithm from first entry with actual encryption (encryptionId != 0)
+    // Get encryption algorithm from first entry with actual encryption
     val encryptionAlgorithm = state.entries
         .firstOrNull { it.encryptionId != 0 }
         ?.let { FormatUtils.getEncryptionName(it.encryptionId) }
 
-    // Count entries with actual compression/encryption (by ID, not flag)
     val hasCompression = state.entries.any { it.compressionId != 0 }
     val hasEncryption = state.entries.any { it.encryptionId != 0 }
 
@@ -472,34 +509,34 @@ private fun ArchiveInfoPanel(state: ArchiveState, i18n: I18n) {
             style = FluentTheme.typography.bodyStrong,
             color = AetherColors.AccentPrimary
         )
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(FluentTokens.Spacing.md))
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(4.dp))
-                .background(FluentTheme.colors.background.card.default)
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            InfoRow(i18n["archive.format"], "APACK ${state.formatVersion}")
-            InfoRow(i18n["archive.entries"], state.entries.size.toString())
-            InfoRow(i18n["archive.original_size"], FormatUtils.formatSize(state.totalOriginalSize))
-            InfoRow(i18n["archive.stored_size"], FormatUtils.formatSize(state.totalStoredSize))
-            InfoRow(i18n["archive.compression_ratio"], FormatUtils.formatRatio(state.compressionRatio))
-            InfoRow(i18n["archive.chunk_size"], FormatUtils.formatChunkSize(state.fileHeader.chunkSize()))
-            InfoRow(i18n["archive.checksum"], FormatUtils.getChecksumName(state.fileHeader.checksumAlgorithm()))
-
-            // Status badges with algorithm names - only show if entries actually have compression/encryption
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+        FluentCard(elevation = FluentTokens.Elevation.level1) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(FluentTokens.Spacing.sm)
             ) {
-                if (hasEncryption && encryptionAlgorithm != null) {
-                    StatusBadge(encryptionAlgorithm, AetherColors.Encrypted)
-                }
-                if (hasCompression && compressionAlgorithm != null) {
-                    StatusBadge(compressionAlgorithm, AetherColors.Compressed)
+                InfoRow(i18n["archive.format"], "APACK ${state.formatVersion}")
+                InfoRow(i18n["archive.entries"], state.entries.size.toString())
+                InfoRow(i18n["archive.original_size"], FormatUtils.formatSize(state.totalOriginalSize))
+                InfoRow(i18n["archive.stored_size"], FormatUtils.formatSize(state.totalStoredSize))
+                InfoRow(i18n["archive.compression_ratio"], FormatUtils.formatRatio(state.compressionRatio))
+                InfoRow(i18n["archive.chunk_size"], FormatUtils.formatChunkSize(state.fileHeader.chunkSize()))
+                InfoRow(i18n["archive.checksum"], FormatUtils.getChecksumName(state.fileHeader.checksumAlgorithm()))
+
+                // Status badges with algorithm names
+                if (hasEncryption || hasCompression) {
+                    Spacer(modifier = Modifier.height(FluentTokens.Spacing.xs))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(FluentTokens.Spacing.sm)
+                    ) {
+                        if (hasEncryption && encryptionAlgorithm != null) {
+                            StatusBadge(encryptionAlgorithm, AetherColors.Encrypted)
+                        }
+                        if (hasCompression && compressionAlgorithm != null) {
+                            StatusBadge(compressionAlgorithm, AetherColors.Compressed)
+                        }
+                    }
                 }
             }
         }
@@ -510,9 +547,9 @@ private fun ArchiveInfoPanel(state: ArchiveState, i18n: I18n) {
 private fun StatusBadge(label: String, color: Color) {
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(FluentTokens.Corner.small))
             .background(color.copy(alpha = 0.15f))
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .padding(horizontal = FluentTokens.Spacing.sm, vertical = FluentTokens.Spacing.xs)
     ) {
         Text(
             text = label,
@@ -523,48 +560,48 @@ private fun StatusBadge(label: String, color: Color) {
 }
 
 @Composable
-private fun EntryDetailsPanel(entry: Entry, i18n: I18n) {
+private fun ColumnScope.EntryDetailsPanel(entry: Entry, i18n: I18n) {
     val ratio = if (entry.originalSize > 0) {
         entry.storedSize.toDouble() / entry.originalSize
     } else {
         1.0
     }
 
-    Column {
+    Column(modifier = Modifier.weight(1f)) {
         Text(
             text = i18n["inspector.details"],
             style = FluentTheme.typography.bodyStrong,
             color = AetherColors.AccentPrimary
         )
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(FluentTokens.Spacing.md))
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(4.dp))
-                .background(FluentTheme.colors.background.card.default)
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        FluentCard(
+            modifier = Modifier.fillMaxSize(),
+            elevation = FluentTokens.Elevation.level1
         ) {
-            InfoRow(i18n["entry.name"], entry.name)
-            if (entry.mimeType.isNotEmpty()) {
-                InfoRow(i18n["entry.mime_type"], entry.mimeType)
+            Column(
+                verticalArrangement = Arrangement.spacedBy(FluentTokens.Spacing.sm)
+            ) {
+                InfoRow(i18n["entry.name"], entry.name)
+                if (entry.mimeType.isNotEmpty()) {
+                    InfoRow(i18n["entry.mime_type"], entry.mimeType)
+                }
+                InfoRow(i18n["entry.original_size"], FormatUtils.formatSize(entry.originalSize))
+                InfoRow(i18n["entry.stored_size"], FormatUtils.formatSize(entry.storedSize))
+                InfoRow(i18n["entry.ratio"], FormatUtils.formatRatio(ratio))
+                InfoRow(i18n["entry.chunks"], entry.chunkCount.toString())
+                InfoRow(i18n["entry.compressed"], if (entry.compressionId != 0) {
+                    FormatUtils.getCompressionName(entry.compressionId)
+                } else {
+                    i18n["flag.no"]
+                })
+                InfoRow(i18n["entry.encrypted"], if (entry.encryptionId != 0) {
+                    FormatUtils.getEncryptionName(entry.encryptionId)
+                } else {
+                    i18n["flag.no"]
+                })
+                InfoRow(i18n["entry.ecc"], if (entry.hasEcc()) i18n["flag.yes"] else i18n["flag.no"])
             }
-            InfoRow(i18n["entry.original_size"], FormatUtils.formatSize(entry.originalSize))
-            InfoRow(i18n["entry.stored_size"], FormatUtils.formatSize(entry.storedSize))
-            InfoRow(i18n["entry.ratio"], FormatUtils.formatRatio(ratio))
-            InfoRow(i18n["entry.chunks"], entry.chunkCount.toString())
-            InfoRow(i18n["entry.compressed"], if (entry.compressionId != 0) {
-                FormatUtils.getCompressionName(entry.compressionId)
-            } else {
-                i18n["flag.no"]
-            })
-            InfoRow(i18n["entry.encrypted"], if (entry.encryptionId != 0) {
-                FormatUtils.getEncryptionName(entry.encryptionId)
-            } else {
-                i18n["flag.no"]
-            })
-            InfoRow(i18n["entry.ecc"], if (entry.hasEcc()) i18n["flag.yes"] else i18n["flag.no"])
         }
     }
 }
@@ -600,7 +637,7 @@ private fun LoadingContent(i18n: I18n) {
                 color = AetherColors.AccentPrimary,
                 modifier = Modifier.size(32.dp)
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(FluentTokens.Spacing.lg))
             Text(
                 text = i18n["common.loading"],
                 style = FluentTheme.typography.body,
@@ -620,16 +657,16 @@ private fun ErrorContent(message: String, i18n: I18n) {
             Icon(
                 imageVector = Icons.Regular.ErrorCircle,
                 contentDescription = null,
-                modifier = Modifier.size(48.dp),
+                modifier = Modifier.size(FluentTokens.Components.iconSizeHero),
                 tint = AetherColors.Error
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(FluentTokens.Spacing.lg))
             Text(
                 text = i18n["common.error"],
                 style = FluentTheme.typography.subtitle,
                 color = AetherColors.Error
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(FluentTokens.Spacing.sm))
             Text(
                 text = message,
                 style = FluentTheme.typography.body,

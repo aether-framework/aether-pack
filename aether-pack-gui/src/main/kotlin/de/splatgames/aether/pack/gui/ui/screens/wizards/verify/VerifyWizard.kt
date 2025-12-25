@@ -53,7 +53,9 @@ import com.konyaco.fluent.icons.regular.*
 import de.splatgames.aether.pack.gui.i18n.I18n
 import de.splatgames.aether.pack.gui.navigation.Navigator
 import de.splatgames.aether.pack.gui.state.AppState
+import de.splatgames.aether.pack.gui.ui.components.FluentAccentButton
 import de.splatgames.aether.pack.gui.ui.theme.AetherColors
+import de.splatgames.aether.pack.gui.ui.theme.FluentTokens
 import de.splatgames.aether.pack.gui.util.ArchiveUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -270,7 +272,7 @@ fun VerifyWizard(
                 Button(onClick = { navigator.goBack() }) {
                     Text(i18n["common.cancel"])
                 }
-                AccentButton(
+                FluentAccentButton(
                     onClick = { onPasswordSubmit() },
                     enabled = password.isNotEmpty()
                 ) {
@@ -536,31 +538,6 @@ private fun outlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedPlaceholderColor = FluentTheme.colors.text.text.secondary,
     unfocusedPlaceholderColor = FluentTheme.colors.text.text.secondary
 )
-
-@Composable
-private fun AccentButton(
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-    content: @Composable RowScope.() -> Unit
-) {
-    val backgroundColor = if (enabled) AetherColors.AccentPrimary else AetherColors.AccentPrimary.copy(alpha = 0.5f)
-
-    androidx.compose.runtime.CompositionLocalProvider(
-        androidx.compose.material3.LocalContentColor provides Color.White,
-        com.konyaco.fluent.LocalContentColor provides Color.White
-    ) {
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(4.dp))
-                .background(backgroundColor)
-                .pointerHoverIcon(PointerIcon.Hand)
-                .clickable(enabled = enabled, onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            content = content
-        )
-    }
-}
 
 @Composable
 private fun ErrorContent(message: String, i18n: I18n) {

@@ -36,6 +36,7 @@ import androidx.compose.material3.LocalContentColor as Material3LocalContentColo
 
 /**
  * Aether Pack color palette based on Windows Fluent Design.
+ * Extended with modern Mica-style colors for depth and elevation.
  */
 object AetherColors {
     // Aether Violett Accent
@@ -54,6 +55,32 @@ object AetherColors {
     val Compressed = Color(0xFFB388FF)
     val Encrypted = Color(0xFFFF8A65)
     val Ecc = Color(0xFF4DB6AC)
+
+    // Card backgrounds with subtle differentiation
+    val CardBackground = Color(0xFF2D2D2D)
+    val CardBackgroundHover = Color(0xFF363636)
+    val CardBackgroundPressed = Color(0xFF404040)
+
+    // Sidebar specific colors
+    val SidebarBackground = Color(0xFF1C1C1C)
+    val SidebarBorder = Color(0xFF3A3A3A)
+
+    // Elevated surfaces
+    val SurfaceElevated = Color(0xFF383838)
+
+    // Shadow colors for elevation effects
+    val ShadowAmbient = Color(0x26000000)   // 15% black
+    val ShadowKey = Color(0x1A000000)       // 10% black
+
+    // Hero section gradient colors
+    val GradientStart = Color(0xFF7C4DFF)   // Accent primary
+    val GradientEnd = Color(0xFF3D2980)     // Darker accent
+
+    // Light theme card backgrounds
+    val CardBackgroundLight = Color(0xFFFFFFFF)
+    val CardBackgroundHoverLight = Color(0xFFF5F5F5)
+    val SidebarBackgroundLight = Color(0xFFF3F3F3)
+    val SidebarBorderLight = Color(0xFFE0E0E0)
 }
 
 // Material3 dark color scheme for Material components

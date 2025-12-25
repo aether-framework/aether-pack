@@ -60,8 +60,11 @@ import de.splatgames.aether.pack.gui.i18n.I18n
 import de.splatgames.aether.pack.gui.navigation.Navigator
 import de.splatgames.aether.pack.gui.state.AppState
 import de.splatgames.aether.pack.gui.ui.components.FileDragDropContainer
+import de.splatgames.aether.pack.gui.ui.components.FluentAccentButton
+import de.splatgames.aether.pack.gui.ui.components.FluentSectionCard
 import de.splatgames.aether.pack.gui.ui.components.HelpTooltip
 import de.splatgames.aether.pack.gui.ui.theme.AetherColors
+import de.splatgames.aether.pack.gui.ui.theme.FluentTokens
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.swing.JFileChooser
@@ -400,7 +403,7 @@ private fun WizardFooter(
         }
 
         if (currentStep < totalSteps - 1) {
-            AccentButton(
+            FluentAccentButton(
                 onClick = onNext,
                 enabled = canGoNext
             ) {
@@ -413,7 +416,7 @@ private fun WizardFooter(
                 )
             }
         } else {
-            AccentButton(
+            FluentAccentButton(
                 onClick = onFinish,
                 enabled = canGoNext
             ) {
@@ -642,7 +645,7 @@ private fun CompressionStep(
             .fillMaxWidth()
             .widthIn(max = 600.dp)
     ) {
-        SectionCard(
+        FluentSectionCard(
             title = i18n["wizard.create.algorithm"],
             tooltip = algorithmTooltip
         ) {
@@ -659,7 +662,7 @@ private fun CompressionStep(
 
         if (algorithm != "none") {
             Spacer(modifier = Modifier.height(16.dp))
-            SectionCard(
+            FluentSectionCard(
                 title = "${i18n["wizard.create.level"]}: $level",
                 tooltip = i18n["tooltip.compression.level"]
             ) {
@@ -678,7 +681,7 @@ private fun CompressionStep(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        SectionCard(
+        FluentSectionCard(
             title = i18n["wizard.create.chunk_size"],
             tooltip = i18n["tooltip.chunk_size"]
         ) {
@@ -750,7 +753,7 @@ private fun EncryptionStep(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-            SectionCard(
+            FluentSectionCard(
                 title = i18n["wizard.create.algorithm"],
                 tooltip = encryptionTooltip
             ) {
@@ -769,7 +772,7 @@ private fun EncryptionStep(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-            SectionCard(title = i18n["wizard.create.password"]) {
+            FluentSectionCard(title = i18n["wizard.create.password"]) {
                 var passwordVisible by remember { mutableStateOf(false) }
                 var confirmPasswordVisible by remember { mutableStateOf(false) }
 
@@ -840,7 +843,7 @@ private fun OutputStep(
             .fillMaxWidth()
             .widthIn(max = 600.dp)
     ) {
-        SectionCard(title = i18n["wizard.create.output_file"]) {
+        FluentSectionCard(title = i18n["wizard.create.output_file"]) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
                     value = outputPath?.toString() ?: "",
@@ -871,7 +874,7 @@ private fun OutputStep(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        SectionCard(title = i18n["wizard.create.summary"]) {
+        FluentSectionCard(title = i18n["wizard.create.summary"]) {
             SummaryRow(i18n["archive.entries"], selectedFiles.size.toString())
             Spacer(modifier = Modifier.height(8.dp))
             SummaryRow(
@@ -885,37 +888,6 @@ private fun OutputStep(
                 if (enableEncryption) encryptionAlgorithm else i18n["flag.no"]
             )
         }
-    }
-}
-
-@Composable
-private fun SectionCard(
-    title: String,
-    tooltip: String? = null,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
-            .background(FluentTheme.colors.background.card.default)
-            .padding(16.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = title,
-                style = FluentTheme.typography.bodyStrong,
-                color = AetherColors.AccentPrimary
-            )
-            if (tooltip != null) {
-                HelpTooltip(tooltip = tooltip)
-            }
-        }
-        Spacer(modifier = Modifier.height(12.dp))
-        content()
     }
 }
 
@@ -1072,7 +1044,7 @@ private fun CreationSuccessContent(
             Spacer(modifier = Modifier.height(32.dp))
 
             // Primary action - Open in App (most prominent)
-            AccentButton(
+            FluentAccentButton(
                 onClick = onOpenInApp,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -1113,33 +1085,6 @@ private fun CreationSuccessContent(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun AccentButton(
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-    modifier: Modifier = Modifier,
-    content: @Composable RowScope.() -> Unit
-) {
-    val backgroundColor = if (enabled) AetherColors.AccentPrimary else AetherColors.AccentPrimary.copy(alpha = 0.5f)
-
-    androidx.compose.runtime.CompositionLocalProvider(
-        androidx.compose.material3.LocalContentColor provides Color.White,
-        com.konyaco.fluent.LocalContentColor provides Color.White
-    ) {
-        Row(
-            modifier = modifier
-                .clip(RoundedCornerShape(4.dp))
-                .background(backgroundColor)
-                .pointerHoverIcon(PointerIcon.Hand)
-                .clickable(enabled = enabled, onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-            content = content
-        )
     }
 }
 

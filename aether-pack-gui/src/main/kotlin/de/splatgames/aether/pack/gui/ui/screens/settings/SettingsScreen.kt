@@ -22,6 +22,8 @@
 
 package de.splatgames.aether.pack.gui.ui.screens.settings
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
@@ -51,12 +53,15 @@ import com.konyaco.fluent.icons.regular.*
 import de.splatgames.aether.pack.gui.i18n.I18n
 import de.splatgames.aether.pack.gui.navigation.Navigator
 import de.splatgames.aether.pack.gui.state.AppState
+import de.splatgames.aether.pack.gui.ui.components.FluentSectionCard
 import de.splatgames.aether.pack.gui.ui.theme.AetherColors
+import de.splatgames.aether.pack.gui.ui.theme.FluentTokens
 import java.util.*
 import javax.swing.JFileChooser
 
 /**
  * Settings screen for application configuration.
+ * Redesigned with modern Fluent Design styling.
  */
 @Composable
 fun SettingsScreen(
@@ -69,8 +74,9 @@ fun SettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp)
-            .verticalScroll(scrollState)
+            .padding(FluentTokens.Spacing.xl)
+            .verticalScroll(scrollState),
+        verticalArrangement = Arrangement.spacedBy(FluentTokens.Spacing.lg)
     ) {
         // Page Title
         Text(
@@ -78,10 +84,8 @@ fun SettingsScreen(
             style = FluentTheme.typography.title
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
-
         // Appearance Section
-        SettingsSection(title = i18n["settings.appearance"]) {
+        FluentSectionCard(title = i18n["settings.appearance"]) {
             // Theme Setting
             SettingsRow(
                 icon = Icons.Regular.DarkTheme,
@@ -97,9 +101,9 @@ fun SettingsScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            SettingsDivider()
 
-            // Language Setting - uses dropdown for better scalability
+            // Language Setting
             val availableLocales = remember { I18n.getAvailableLocales() }
             val currentLocale = appState.settings.locale
             val currentLanguageName = currentLocale.getDisplayLanguage(currentLocale)
@@ -121,10 +125,8 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
-
         // Defaults Section
-        SettingsSection(title = i18n["settings.defaults"]) {
+        FluentSectionCard(title = i18n["settings.defaults"]) {
             // Default Compression
             val compressionOptions = listOf("none", "zstd", "lz4")
 
@@ -133,7 +135,7 @@ fun SettingsScreen(
                 title = i18n["settings.default_compression"],
                 description = i18n["compression.${appState.settings.defaultCompression}"]
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(FluentTokens.Spacing.sm)) {
                     compressionOptions.forEach { compression ->
                         val isSelected = compression == appState.settings.defaultCompression
                         SelectableButton(
@@ -148,7 +150,7 @@ fun SettingsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            SettingsDivider()
 
             // Default Chunk Size
             val chunkSizeOptions = listOf(64, 128, 256, 512, 1024)
@@ -158,7 +160,7 @@ fun SettingsScreen(
                 title = i18n["settings.default_chunk_size"],
                 description = "${appState.settings.defaultChunkSizeKb} KB"
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(FluentTokens.Spacing.sm)) {
                     chunkSizeOptions.forEach { size ->
                         val isSelected = size == appState.settings.defaultChunkSizeKb
                         SelectableButton(
@@ -173,7 +175,7 @@ fun SettingsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            SettingsDivider()
 
             // Default Output Directory
             SettingsRow(
@@ -198,10 +200,8 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
-
         // Behavior Section
-        SettingsSection(title = i18n["settings.behavior"]) {
+        FluentSectionCard(title = i18n["settings.behavior"]) {
             // Confirm Overwrite
             SettingsRow(
                 icon = Icons.Regular.Warning,
@@ -217,7 +217,7 @@ fun SettingsScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            SettingsDivider()
 
             // Max Recent Files
             val recentFilesOptions = listOf(5, 10, 15, 20)
@@ -227,7 +227,7 @@ fun SettingsScreen(
                 title = i18n["settings.max_recent_files"],
                 description = appState.settings.maxRecentFiles.toString()
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(FluentTokens.Spacing.sm)) {
                     recentFilesOptions.forEach { count ->
                         val isSelected = count == appState.settings.maxRecentFiles
                         SelectableButton(
@@ -243,10 +243,8 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
-
         // About Section
-        SettingsSection(title = i18n["common.about"]) {
+        FluentSectionCard(title = i18n["common.about"]) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -254,9 +252,9 @@ fun SettingsScreen(
                 Icon(
                     imageVector = Icons.Regular.Info,
                     contentDescription = null,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(FluentTokens.Components.iconSizeMedium)
                 )
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(FluentTokens.Spacing.md))
                 Column {
                     Text(
                         text = "Aether Pack",
@@ -281,6 +279,7 @@ private fun FluentSwitch(
     Switch(
         checked = checked,
         onCheckedChange = onCheckedChange,
+        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand),
         colors = SwitchDefaults.colors(
             checkedThumbColor = Color.White,
             checkedTrackColor = AetherColors.AccentPrimary,
@@ -297,16 +296,33 @@ private fun SelectableButton(
     onClick: () -> Unit,
     label: String
 ) {
-    val backgroundColor = if (selected) AetherColors.AccentPrimary else FluentTheme.colors.subtleFill.secondary
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+
+    val backgroundColor by animateColorAsState(
+        targetValue = when {
+            selected -> AetherColors.AccentPrimary
+            isHovered -> FluentTheme.colors.subtleFill.tertiary
+            else -> FluentTheme.colors.subtleFill.secondary
+        },
+        animationSpec = tween(FluentTokens.Animation.fast),
+        label = "selectableButtonBg"
+    )
+
     val textColor = if (selected) Color.White else FluentTheme.colors.text.text.primary
 
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(FluentTokens.Corner.small))
             .background(backgroundColor)
             .pointerHoverIcon(PointerIcon.Hand)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .hoverable(interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .padding(horizontal = FluentTokens.Spacing.md, vertical = FluentTokens.Spacing.xs),
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -318,25 +334,14 @@ private fun SelectableButton(
 }
 
 @Composable
-private fun SettingsSection(
-    title: String,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Column(
+private fun SettingsDivider() {
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
-            .background(FluentTheme.colors.background.card.default)
-            .padding(16.dp)
-    ) {
-        Text(
-            text = title,
-            style = FluentTheme.typography.bodyStrong,
-            color = AetherColors.AccentPrimary
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        content()
-    }
+            .padding(vertical = FluentTokens.Spacing.sm)
+            .height(FluentTokens.Components.dividerThickness)
+            .background(FluentTheme.colors.stroke.divider.default.copy(alpha = 0.5f))
+    )
 }
 
 @Composable
@@ -349,15 +354,15 @@ private fun SettingsRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = FluentTokens.Spacing.xs),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(FluentTokens.Components.iconSizeMedium)
         )
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(FluentTokens.Spacing.md))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
@@ -369,7 +374,7 @@ private fun SettingsRow(
                 color = FluentTheme.colors.text.text.secondary
             )
         }
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(FluentTokens.Spacing.lg))
         action()
     }
 }
@@ -384,21 +389,27 @@ private fun LanguageDropdown(
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
 
+    val backgroundColor by animateColorAsState(
+        targetValue = if (isHovered)
+            FluentTheme.colors.subtleFill.tertiary
+        else
+            FluentTheme.colors.subtleFill.secondary,
+        animationSpec = tween(FluentTokens.Animation.fast),
+        label = "dropdownBg"
+    )
+
     Box {
         // Dropdown trigger button
         Row(
             modifier = Modifier
-                .clip(RoundedCornerShape(4.dp))
-                .background(
-                    if (isHovered) FluentTheme.colors.subtleFill.tertiary
-                    else FluentTheme.colors.subtleFill.secondary
-                )
+                .clip(RoundedCornerShape(FluentTokens.Corner.small))
+                .background(backgroundColor)
                 .pointerHoverIcon(PointerIcon.Hand)
                 .hoverable(interactionSource)
                 .clickable { expanded = true }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = FluentTokens.Spacing.md, vertical = FluentTokens.Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(FluentTokens.Spacing.sm)
         ) {
             Text(
                 text = selectedLocale.getDisplayLanguage(selectedLocale)
@@ -408,7 +419,7 @@ private fun LanguageDropdown(
             Icon(
                 imageVector = Icons.Regular.ChevronDown,
                 contentDescription = null,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(FluentTokens.Components.iconSizeSmall)
             )
         }
 
@@ -424,23 +435,27 @@ private fun LanguageDropdown(
                 val isItemHovered by itemInteractionSource.collectIsHoveredAsState()
                 val isSelected = locale.language == selectedLocale.language
 
+                val itemBg by animateColorAsState(
+                    targetValue = when {
+                        isSelected -> AetherColors.AccentPrimary.copy(alpha = 0.15f)
+                        isItemHovered -> FluentTheme.colors.subtleFill.secondary
+                        else -> Color.Transparent
+                    },
+                    animationSpec = tween(FluentTokens.Animation.fast),
+                    label = "dropdownItemBg"
+                )
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(
-                            when {
-                                isSelected -> AetherColors.AccentPrimary.copy(alpha = 0.15f)
-                                isItemHovered -> FluentTheme.colors.subtleFill.secondary
-                                else -> Color.Transparent
-                            }
-                        )
+                        .background(itemBg)
                         .pointerHoverIcon(PointerIcon.Hand)
                         .hoverable(itemInteractionSource)
                         .clickable {
                             onLocaleSelected(locale)
                             expanded = false
                         }
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        .padding(horizontal = FluentTokens.Spacing.lg, vertical = FluentTokens.Spacing.sm),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -455,7 +470,7 @@ private fun LanguageDropdown(
                         Icon(
                             imageVector = Icons.Regular.Checkmark,
                             contentDescription = null,
-                            modifier = Modifier.size(16.dp),
+                            modifier = Modifier.size(FluentTokens.Components.iconSizeSmall),
                             tint = AetherColors.AccentPrimary
                         )
                     }
