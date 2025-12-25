@@ -487,14 +487,27 @@ private fun PasswordInputContent(
                 label = { androidx.compose.material3.Text(i18n["wizard.create.password"]) },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = AetherColors.AccentPrimary,
-                    cursorColor = AetherColors.AccentPrimary
-                )
+                colors = outlinedTextFieldColors()
             )
         }
     }
 }
+
+/**
+ * Creates consistent OutlinedTextField colors for dark mode compatibility.
+ */
+@Composable
+private fun outlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = Color.White,
+    unfocusedTextColor = Color.White,
+    focusedBorderColor = AetherColors.AccentPrimary,
+    unfocusedBorderColor = Color(0xFF6E6E6E),
+    focusedLabelColor = AetherColors.AccentPrimary,
+    unfocusedLabelColor = Color(0xFFAAAAAA),
+    cursorColor = AetherColors.AccentPrimary,
+    focusedPlaceholderColor = Color(0xFF8A8A8A),
+    unfocusedPlaceholderColor = Color(0xFF8A8A8A)
+)
 
 @Composable
 private fun AccentButton(
@@ -504,15 +517,19 @@ private fun AccentButton(
 ) {
     val backgroundColor = if (enabled) AetherColors.AccentPrimary else AetherColors.AccentPrimary.copy(alpha = 0.5f)
 
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(backgroundColor)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content
-    )
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.material3.LocalContentColor provides Color.White
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .background(backgroundColor)
+                .clickable(enabled = enabled, onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            content = content
+        )
+    }
 }
 
 @Composable
@@ -588,7 +605,22 @@ private suspend fun startVerification(
         }
     } catch (e: Exception) {
         withContext(Dispatchers.Main) {
-            onResult(emptyList(), e.message ?: i18n["error.unknown"])
+            // Check for common decryption errors and provide user-friendly messages
+            val errorMessage = when {
+                e.message?.contains("tag mismatch", ignoreCase = true) == true ||
+                e.message?.contains("integrity check", ignoreCase = true) == true ||
+                e.message?.contains("AEADBadTagException", ignoreCase = true) == true ||
+                e.message?.contains("mac check", ignoreCase = true) == true ||
+                e.message?.contains("authentication tag", ignoreCase = true) == true -> {
+                    i18n["error.wrong_password"]
+                }
+                e.message?.contains("unwrap", ignoreCase = true) == true ||
+                e.message?.contains("InvalidKeyException", ignoreCase = true) == true -> {
+                    i18n["error.wrong_password"]
+                }
+                else -> e.message ?: i18n["error.unknown"]
+            }
+            onResult(emptyList(), errorMessage)
         }
     }
 }

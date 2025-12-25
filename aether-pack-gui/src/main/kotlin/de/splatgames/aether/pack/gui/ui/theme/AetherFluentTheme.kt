@@ -22,6 +22,9 @@
 
 package de.splatgames.aether.pack.gui.ui.theme
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import com.konyaco.fluent.FluentTheme
@@ -52,17 +55,56 @@ object AetherColors {
     val Ecc = Color(0xFF4DB6AC)
 }
 
+// Material3 dark color scheme for Material components
+private val DarkMaterialColors = darkColorScheme(
+    primary = AetherColors.AccentPrimary,
+    onPrimary = Color.White,
+    secondary = AetherColors.AccentHover,
+    onSecondary = Color.White,
+    background = Color(0xFF1E1E1E),
+    onBackground = Color(0xFFE6E1E5),
+    surface = Color(0xFF2D2D2D),
+    onSurface = Color(0xFFE6E1E5),
+    surfaceVariant = Color(0xFF3C3C3C),
+    onSurfaceVariant = Color(0xFFCAC4D0),
+    outline = Color(0xFF938F99),
+    error = AetherColors.Error,
+    onError = Color.White
+)
+
+// Material3 light color scheme for Material components
+private val LightMaterialColors = lightColorScheme(
+    primary = AetherColors.AccentPrimary,
+    onPrimary = Color.White,
+    secondary = AetherColors.AccentHover,
+    onSecondary = Color.White,
+    background = Color(0xFFFAFAFA),
+    onBackground = Color(0xFF1C1B1F),
+    surface = Color.White,
+    onSurface = Color(0xFF1C1B1F),
+    surfaceVariant = Color(0xFFF5F5F5),
+    onSurfaceVariant = Color(0xFF49454F),
+    outline = Color(0xFF79747E),
+    error = AetherColors.Error,
+    onError = Color.White
+)
+
 /**
  * Aether Pack Fluent Theme wrapper.
  * Uses dark theme by default with Aether accent colors.
+ * Also wraps Material3 theme for Material components compatibility.
  */
 @Composable
 fun AetherFluentTheme(
     darkTheme: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    val colors = if (darkTheme) darkColors() else lightColors()
-    FluentTheme(colors = colors) {
-        content()
+    val fluentColors = if (darkTheme) darkColors() else lightColors()
+    val materialColors = if (darkTheme) DarkMaterialColors else LightMaterialColors
+
+    MaterialTheme(colorScheme = materialColors) {
+        FluentTheme(colors = fluentColors) {
+            content()
+        }
     }
 }

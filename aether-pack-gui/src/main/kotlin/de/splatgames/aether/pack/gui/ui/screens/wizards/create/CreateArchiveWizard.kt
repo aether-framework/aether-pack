@@ -99,6 +99,7 @@ fun CreateArchiveWizard(
     var creationError by remember { mutableStateOf<String?>(null) }
     var creationProgress by remember { mutableStateOf(0f) }
     var currentFileName by remember { mutableStateOf("") }
+    var isProcessingLargeFile by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     val steps = listOf(
@@ -136,7 +137,21 @@ fun CreateArchiveWizard(
                     CreationSuccessContent(
                         outputPath = outputPath!!,
                         i18n = i18n,
-                        onClose = { navigator.goBack() }
+                        onClose = { navigator.goBack() },
+                        onOpenInExplorer = {
+                            try {
+                                // Open the folder containing the file and select it
+                                val file = outputPath!!.toFile()
+                                if (java.awt.Desktop.isDesktopSupported()) {
+                                    java.awt.Desktop.getDesktop().open(file.parentFile)
+                                }
+                            } catch (e: Exception) {
+                                // Ignore errors opening explorer
+                            }
+                        },
+                        onOpenInApp = {
+                            navigator.navigate(de.splatgames.aether.pack.gui.navigation.Screen.Inspector(outputPath!!))
+                        }
                     )
                 }
                 creationError != null -> {
@@ -153,6 +168,7 @@ fun CreateArchiveWizard(
                     CreationProgressContent(
                         progress = creationProgress,
                         currentFileName = currentFileName,
+                        isIndeterminate = isProcessingLargeFile,
                         i18n = i18n
                     )
                 }
@@ -317,14 +333,31 @@ fun CreateArchiveWizard(
 
                                 val config = configBuilder.build()
 
+                                // Calculate total size for accurate progress tracking
+                                val fileSizes = allFiles.map { (filePath, _) ->
+                                    Files.size(filePath)
+                                }
+                                val totalBytes = fileSizes.sum()
+                                var processedBytes = 0L
+
+                                // Threshold for "large file" (10 MB)
+                                val largeFileThreshold = 10 * 1024 * 1024L
+
                                 // Create archive
-                                val totalFiles = allFiles.size
                                 AetherPackWriter.create(outputPath!!, config).use { writer ->
                                     allFiles.forEachIndexed { index, (filePath, entryName) ->
+                                        val fileSize = fileSizes[index]
+                                        val isLarge = fileSize > largeFileThreshold
+
                                         // Update progress before processing each file
                                         withContext(Dispatchers.Main) {
                                             currentFileName = entryName
-                                            creationProgress = index.toFloat() / totalFiles
+                                            isProcessingLargeFile = isLarge
+                                            creationProgress = if (totalBytes > 0) {
+                                                processedBytes.toFloat() / totalBytes
+                                            } else {
+                                                index.toFloat() / allFiles.size
+                                            }
                                         }
 
                                         // Small delay to allow UI to update
@@ -332,9 +365,17 @@ fun CreateArchiveWizard(
 
                                         writer.addEntry(entryName, filePath)
 
+                                        // Update bytes processed
+                                        processedBytes += fileSize
+
                                         // Update progress after file is added
                                         withContext(Dispatchers.Main) {
-                                            creationProgress = (index + 1).toFloat() / totalFiles
+                                            isProcessingLargeFile = false
+                                            creationProgress = if (totalBytes > 0) {
+                                                processedBytes.toFloat() / totalBytes
+                                            } else {
+                                                (index + 1).toFloat() / allFiles.size
+                                            }
                                         }
                                     }
                                 }
@@ -491,25 +532,6 @@ private fun WizardFooter(
             }
         }
     }
-}
-
-@Composable
-private fun AccentButton(
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-    content: @Composable RowScope.() -> Unit
-) {
-    val backgroundColor = if (enabled) AetherColors.AccentPrimary else AetherColors.AccentPrimary.copy(alpha = 0.5f)
-
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(backgroundColor)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content
-    )
 }
 
 @Composable
@@ -810,10 +832,7 @@ private fun EncryptionStep(
                     label = { androidx.compose.material3.Text(i18n["wizard.create.password"]) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = AetherColors.AccentPrimary,
-                        cursorColor = AetherColors.AccentPrimary
-                    )
+                    colors = outlinedTextFieldColors()
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(
@@ -823,10 +842,7 @@ private fun EncryptionStep(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     isError = confirmPassword.isNotEmpty() && password != confirmPassword,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = AetherColors.AccentPrimary,
-                        cursorColor = AetherColors.AccentPrimary
-                    )
+                    colors = outlinedTextFieldColors()
                 )
                 if (confirmPassword.isNotEmpty() && password != confirmPassword) {
                     Spacer(modifier = Modifier.height(8.dp))
@@ -865,9 +881,7 @@ private fun OutputStep(
                     readOnly = true,
                     modifier = Modifier.weight(1f),
                     placeholder = { androidx.compose.material3.Text(i18n["wizard.create.browse"]) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = AetherColors.AccentPrimary
-                    )
+                    colors = outlinedTextFieldColors()
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(onClick = {
@@ -976,6 +990,7 @@ private fun SummaryRow(label: String, value: String) {
 private fun CreationProgressContent(
     progress: Float,
     currentFileName: String,
+    isIndeterminate: Boolean,
     i18n: I18n
 ) {
     Box(
@@ -1002,18 +1017,35 @@ private fun CreationProgressContent(
                 color = FluentTheme.colors.text.text.secondary
             )
             Spacer(modifier = Modifier.height(24.dp))
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth(),
-                color = AetherColors.AccentPrimary,
-                trackColor = FluentTheme.colors.subtleFill.secondary
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "${(progress * 100).toInt()}%",
-                style = FluentTheme.typography.caption,
-                color = FluentTheme.colors.text.text.secondary
-            )
+
+            if (isIndeterminate) {
+                // Show indeterminate progress for large files
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = AetherColors.AccentPrimary,
+                    trackColor = FluentTheme.colors.subtleFill.secondary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = i18n["common.please_wait"],
+                    style = FluentTheme.typography.caption,
+                    color = FluentTheme.colors.text.text.secondary
+                )
+            } else {
+                // Show determinate progress
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = AetherColors.AccentPrimary,
+                    trackColor = FluentTheme.colors.subtleFill.secondary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "${(progress * 100).toInt()}%",
+                    style = FluentTheme.typography.caption,
+                    color = FluentTheme.colors.text.text.secondary
+                )
+            }
         }
     }
 }
@@ -1022,13 +1054,18 @@ private fun CreationProgressContent(
 private fun CreationSuccessContent(
     outputPath: Path,
     i18n: I18n,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onOpenInExplorer: () -> Unit,
+    onOpenInApp: () -> Unit
 ) {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.widthIn(max = 400.dp)
+        ) {
             Icon(
                 imageVector = Icons.Regular.CheckmarkCircle,
                 contentDescription = null,
@@ -1047,11 +1084,75 @@ private fun CreationSuccessContent(
                 style = FluentTheme.typography.body,
                 color = FluentTheme.colors.text.text.secondary
             )
-            Spacer(modifier = Modifier.height(24.dp))
-            Button(onClick = onClose) {
-                Text(i18n["common.close"])
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Primary action - Open in App (most prominent)
+            AccentButton(
+                onClick = onOpenInApp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    imageVector = Icons.Regular.Archive,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(i18n["wizard.create.open_in_app"])
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Secondary actions
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onOpenInExplorer,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Regular.FolderOpen,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(i18n["wizard.create.open_in_explorer"])
+                }
+
+                Button(
+                    onClick = onClose,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(i18n["common.close"])
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun AccentButton(
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+    content: @Composable RowScope.() -> Unit
+) {
+    val backgroundColor = if (enabled) AetherColors.AccentPrimary else AetherColors.AccentPrimary.copy(alpha = 0.5f)
+
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.material3.LocalContentColor provides Color.White
+    ) {
+        Row(
+            modifier = modifier
+                .clip(RoundedCornerShape(4.dp))
+                .background(backgroundColor)
+                .clickable(enabled = enabled, onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+            content = content
+        )
     }
 }
 
@@ -1091,3 +1192,19 @@ private fun CreationErrorContent(
         }
     }
 }
+
+/**
+ * Creates consistent OutlinedTextField colors for dark mode compatibility.
+ */
+@Composable
+private fun outlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = Color.White,
+    unfocusedTextColor = Color.White,
+    focusedBorderColor = AetherColors.AccentPrimary,
+    unfocusedBorderColor = Color(0xFF6E6E6E),
+    focusedLabelColor = AetherColors.AccentPrimary,
+    unfocusedLabelColor = Color(0xFFAAAAAA),
+    cursorColor = AetherColors.AccentPrimary,
+    focusedPlaceholderColor = Color(0xFF8A8A8A),
+    unfocusedPlaceholderColor = Color(0xFF8A8A8A)
+)

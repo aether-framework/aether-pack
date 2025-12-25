@@ -33,6 +33,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.konyaco.fluent.FluentTheme
@@ -164,9 +165,7 @@ fun ExtractWizard(
                                     onValueChange = { },
                                     readOnly = true,
                                     modifier = Modifier.weight(1f),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = AetherColors.AccentPrimary
-                                    )
+                                    colors = outlinedTextFieldColors()
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Button(onClick = {
@@ -200,10 +199,7 @@ fun ExtractWizard(
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true,
                                     visualTransformation = PasswordVisualTransformation(),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = AetherColors.AccentPrimary,
-                                        cursorColor = AetherColors.AccentPrimary
-                                    )
+                                    colors = outlinedTextFieldColors()
                                 )
                             }
                         }
@@ -278,7 +274,21 @@ fun ExtractWizard(
                                 }
                                 extractionComplete = true
                             } catch (e: Exception) {
-                                errorMessage = e.message ?: i18n["error.unknown"]
+                                // Check for common decryption errors and provide user-friendly messages
+                                errorMessage = when {
+                                    e.message?.contains("tag mismatch", ignoreCase = true) == true ||
+                                    e.message?.contains("integrity check", ignoreCase = true) == true ||
+                                    e.message?.contains("AEADBadTagException", ignoreCase = true) == true ||
+                                    e.message?.contains("mac check", ignoreCase = true) == true ||
+                                    e.message?.contains("authentication tag", ignoreCase = true) == true -> {
+                                        i18n["error.wrong_password"]
+                                    }
+                                    e.message?.contains("unwrap", ignoreCase = true) == true ||
+                                    e.message?.contains("InvalidKeyException", ignoreCase = true) == true -> {
+                                        i18n["error.wrong_password"]
+                                    }
+                                    else -> e.message ?: i18n["error.unknown"]
+                                }
                             } finally {
                                 isExtracting = false
                             }
@@ -423,3 +433,19 @@ private fun ErrorContent(
         }
     }
 }
+
+/**
+ * Creates consistent OutlinedTextField colors for dark mode compatibility.
+ */
+@Composable
+private fun outlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = Color.White,
+    unfocusedTextColor = Color.White,
+    focusedBorderColor = AetherColors.AccentPrimary,
+    unfocusedBorderColor = Color(0xFF6E6E6E),
+    focusedLabelColor = AetherColors.AccentPrimary,
+    unfocusedLabelColor = Color(0xFFAAAAAA),
+    cursorColor = AetherColors.AccentPrimary,
+    focusedPlaceholderColor = Color(0xFF8A8A8A),
+    unfocusedPlaceholderColor = Color(0xFF8A8A8A)
+)
