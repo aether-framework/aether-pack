@@ -38,6 +38,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.unit.dp
 import com.konyaco.fluent.FluentTheme
 import com.konyaco.fluent.component.Icon
@@ -206,6 +208,7 @@ private fun NavItem(
             .height(36.dp)
             .clip(RoundedCornerShape(4.dp))
             .background(backgroundColor)
+            .pointerHoverIcon(PointerIcon.Hand)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,

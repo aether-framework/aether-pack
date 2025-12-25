@@ -35,6 +35,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.konyaco.fluent.FluentTheme
@@ -124,6 +126,7 @@ fun ExtractWizard(
                 modifier = Modifier
                     .size(32.dp)
                     .clip(RoundedCornerShape(4.dp))
+                    .pointerHoverIcon(PointerIcon.Hand)
                     .clickable(onClick = { navigator.goBack() }),
                 contentAlignment = Alignment.Center
             ) {
@@ -219,6 +222,7 @@ fun ExtractWizard(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .pointerHoverIcon(PointerIcon.Hand)
                                     .clickable { overwrite = !overwrite }
                                     .padding(vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -398,6 +402,7 @@ private fun AccentButton(
             modifier = Modifier
                 .clip(RoundedCornerShape(4.dp))
                 .background(backgroundColor)
+                .pointerHoverIcon(PointerIcon.Hand)
                 .clickable(enabled = enabled, onClick = onClick)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,

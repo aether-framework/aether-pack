@@ -39,6 +39,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.unit.dp
 import com.konyaco.fluent.FluentTheme
 import com.konyaco.fluent.component.Button
@@ -302,6 +304,7 @@ private fun SelectableButton(
         modifier = Modifier
             .clip(RoundedCornerShape(4.dp))
             .background(backgroundColor)
+            .pointerHoverIcon(PointerIcon.Hand)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
@@ -390,6 +393,7 @@ private fun LanguageDropdown(
                     if (isHovered) FluentTheme.colors.subtleFill.tertiary
                     else FluentTheme.colors.subtleFill.secondary
                 )
+                .pointerHoverIcon(PointerIcon.Hand)
                 .hoverable(interactionSource)
                 .clickable { expanded = true }
                 .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -430,6 +434,7 @@ private fun LanguageDropdown(
                                 else -> Color.Transparent
                             }
                         )
+                        .pointerHoverIcon(PointerIcon.Hand)
                         .hoverable(itemInteractionSource)
                         .clickable {
                             onLocaleSelected(locale)

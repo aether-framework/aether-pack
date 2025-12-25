@@ -37,6 +37,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.konyaco.fluent.FluentTheme
@@ -257,6 +259,7 @@ private fun QuickActionCard(
         modifier = modifier
             .clip(RoundedCornerShape(4.dp))
             .background(backgroundColor)
+            .pointerHoverIcon(PointerIcon.Hand)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -325,6 +328,7 @@ private fun RecentFileRow(
         modifier = Modifier
             .fillMaxWidth()
             .background(backgroundColor)
+            .pointerHoverIcon(PointerIcon.Hand)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -384,6 +388,7 @@ private fun RecentFileRow(
             modifier = Modifier
                 .size(32.dp)
                 .clip(RoundedCornerShape(4.dp))
+                .pointerHoverIcon(PointerIcon.Hand)
                 .clickable(onClick = onRemove),
             contentAlignment = Alignment.Center
         ) {
@@ -494,6 +499,7 @@ private fun DialogAccentButton(
             modifier = Modifier
                 .clip(RoundedCornerShape(4.dp))
                 .background(backgroundColor)
+                .pointerHoverIcon(PointerIcon.Hand)
                 .hoverable(interactionSource)
                 .clickable(
                     interactionSource = interactionSource,

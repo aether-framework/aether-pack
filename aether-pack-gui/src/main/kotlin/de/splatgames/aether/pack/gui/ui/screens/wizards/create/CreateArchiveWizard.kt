@@ -42,6 +42,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.unit.dp
 import com.konyaco.fluent.FluentTheme
 import androidx.compose.material3.IconButton
@@ -303,6 +305,7 @@ private fun WizardHeader(
                 modifier = Modifier
                     .size(32.dp)
                     .clip(RoundedCornerShape(4.dp))
+                    .pointerHoverIcon(PointerIcon.Hand)
                     .clickable(onClick = onClose),
                 contentAlignment = Alignment.Center
             ) {
@@ -586,6 +589,7 @@ private fun FileListItem(
                 .size(28.dp)
                 .clip(RoundedCornerShape(4.dp))
                 .background(if (isButtonHovered) FluentTheme.colors.subtleFill.tertiary else Color.Transparent)
+                .pointerHoverIcon(PointerIcon.Hand)
                 .hoverable(buttonInteractionSource)
                 .clickable(
                     interactionSource = buttonInteractionSource,
@@ -684,6 +688,7 @@ private fun EncryptionStep(
             modifier = Modifier
                 .clip(RoundedCornerShape(4.dp))
                 .background(FluentTheme.colors.background.card.default)
+                .pointerHoverIcon(PointerIcon.Hand)
                 .clickable { onEnabledChanged(!enabled) }
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -881,6 +886,7 @@ private fun SelectableChip(
         modifier = Modifier
             .clip(RoundedCornerShape(4.dp))
             .background(backgroundColor)
+            .pointerHoverIcon(PointerIcon.Hand)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center
@@ -1081,6 +1087,7 @@ private fun AccentButton(
             modifier = modifier
                 .clip(RoundedCornerShape(4.dp))
                 .background(backgroundColor)
+                .pointerHoverIcon(PointerIcon.Hand)
                 .clickable(enabled = enabled, onClick = onClick)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.Center,
@@ -1231,6 +1238,7 @@ private fun DialogButton(
         modifier = Modifier
             .clip(RoundedCornerShape(4.dp))
             .background(backgroundColor)
+            .pointerHoverIcon(PointerIcon.Hand)
             .hoverable(interactionSource)
             .clickable(
                 interactionSource = interactionSource,
@@ -1268,6 +1276,7 @@ private fun DialogAccentButton(
             modifier = Modifier
                 .clip(RoundedCornerShape(4.dp))
                 .background(backgroundColor)
+                .pointerHoverIcon(PointerIcon.Hand)
                 .hoverable(interactionSource)
                 .clickable(
                     interactionSource = interactionSource,

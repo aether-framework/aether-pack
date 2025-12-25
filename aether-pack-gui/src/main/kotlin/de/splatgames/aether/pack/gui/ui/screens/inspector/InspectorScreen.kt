@@ -40,6 +40,8 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.konyaco.fluent.FluentTheme
@@ -201,6 +203,7 @@ private fun InspectorToolbar(
             modifier = Modifier
                 .size(32.dp)
                 .clip(RoundedCornerShape(4.dp))
+                .pointerHoverIcon(PointerIcon.Hand)
                 .clickable(onClick = onBack),
             contentAlignment = Alignment.Center
         ) {
@@ -366,6 +369,7 @@ private fun EntryListItem(
                     Modifier
                 }
             )
+            .pointerHoverIcon(PointerIcon.Hand)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
