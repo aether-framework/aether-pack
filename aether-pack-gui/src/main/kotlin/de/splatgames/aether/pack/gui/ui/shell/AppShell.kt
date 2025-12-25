@@ -58,6 +58,7 @@ import de.splatgames.aether.pack.gui.state.AppState
 import de.splatgames.aether.pack.gui.ui.components.FluentSearchBar
 import de.splatgames.aether.pack.gui.ui.theme.AetherColors
 import de.splatgames.aether.pack.gui.ui.theme.FluentTokens
+import de.splatgames.aether.pack.gui.ui.theme.LocalAetherColors
 import javax.swing.JFileChooser
 import javax.swing.filechooser.FileNameExtensionFilter
 
@@ -150,6 +151,8 @@ private fun NavigationSidebar(
     onNavSelected: (NavDestination) -> Unit,
     i18n: I18n
 ) {
+    val colors = LocalAetherColors.current
+
     // Animated sidebar width
     val sidebarWidth by animateDpAsState(
         targetValue = if (sidebarState.isExpanded)
@@ -167,10 +170,10 @@ private fun NavigationSidebar(
         modifier = Modifier
             .width(sidebarWidth)
             .fillMaxHeight()
-            .background(AetherColors.SidebarBackground)
+            .background(colors.sidebarBackground)
             .border(
                 width = FluentTokens.Components.dividerThickness,
-                color = AetherColors.SidebarBorder,
+                color = colors.sidebarBorder,
                 shape = RoundedCornerShape(0.dp)
             )
             .padding(FluentTokens.Spacing.sm)

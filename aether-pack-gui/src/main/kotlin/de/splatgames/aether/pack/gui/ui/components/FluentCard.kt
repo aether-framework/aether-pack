@@ -42,6 +42,7 @@ import com.konyaco.fluent.FluentTheme
 import com.konyaco.fluent.component.Text
 import de.splatgames.aether.pack.gui.ui.theme.AetherColors
 import de.splatgames.aether.pack.gui.ui.theme.FluentTokens
+import de.splatgames.aether.pack.gui.ui.theme.LocalAetherColors
 import de.splatgames.aether.pack.gui.ui.theme.animatedElevation
 
 /**
@@ -62,14 +63,15 @@ fun FluentCard(
     hoverElevation: Dp = FluentTokens.Elevation.level2,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val colors = LocalAetherColors.current
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
 
     val backgroundColor by animateColorAsState(
         targetValue = if (isHovered && onClick != null)
-            AetherColors.CardBackgroundHover
+            colors.cardBackgroundHover
         else
-            AetherColors.CardBackground,
+            colors.cardBackground,
         animationSpec = tween(FluentTokens.Animation.fast),
         label = "cardBackground"
     )

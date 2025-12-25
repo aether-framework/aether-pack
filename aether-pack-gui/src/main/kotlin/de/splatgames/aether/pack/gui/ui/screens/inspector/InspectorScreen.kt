@@ -63,6 +63,7 @@ import de.splatgames.aether.pack.gui.state.ArchiveState
 import de.splatgames.aether.pack.gui.ui.components.FluentCard
 import de.splatgames.aether.pack.gui.ui.theme.AetherColors
 import de.splatgames.aether.pack.gui.ui.theme.FluentTokens
+import de.splatgames.aether.pack.gui.ui.theme.LocalAetherColors
 import de.splatgames.aether.pack.gui.ui.theme.animatedElevation
 import de.splatgames.aether.pack.gui.util.FormatUtils
 import kotlinx.coroutines.Dispatchers
@@ -194,6 +195,7 @@ private fun InspectorToolbar(
     onVerify: () -> Unit,
     i18n: I18n
 ) {
+    val colors = LocalAetherColors.current
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
 
@@ -215,7 +217,7 @@ private fun InspectorToolbar(
                 hoverLevel = FluentTokens.Elevation.level1,
                 cornerRadius = 0.dp
             )
-            .background(AetherColors.SidebarBackground)
+            .background(colors.sidebarBackground)
             .padding(horizontal = FluentTokens.Spacing.lg, vertical = FluentTokens.Spacing.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
