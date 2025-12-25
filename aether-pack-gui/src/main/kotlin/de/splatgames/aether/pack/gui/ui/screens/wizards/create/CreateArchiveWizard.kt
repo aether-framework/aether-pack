@@ -100,6 +100,7 @@ fun CreateArchiveWizard(
     var creationProgress by remember { mutableStateOf(0f) }
     var currentFileName by remember { mutableStateOf("") }
     var isProcessingLargeFile by remember { mutableStateOf(false) }
+    var showOverwriteDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     val steps = listOf(
@@ -108,6 +109,193 @@ fun CreateArchiveWizard(
         i18n["wizard.create.step.encryption"],
         i18n["wizard.create.step.output"]
     )
+
+    // Function to start archive creation
+    val startCreation: () -> Unit = {
+        isCreating = true
+        showOverwriteDialog = false
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    // Collect all files to add (expand directories)
+                    val allFiles = mutableListOf<Pair<Path, String>>()
+
+                    withContext(Dispatchers.Main) {
+                        currentFileName = i18n["wizard.create.scanning"]
+                        creationProgress = 0f
+                    }
+
+                    for (path in selectedFiles) {
+                        if (Files.isDirectory(path)) {
+                            // Walk directory and add all files with relative paths
+                            Files.walk(path).use { stream ->
+                                stream.filter { Files.isRegularFile(it) }.forEach { file ->
+                                    val relativeName = path.fileName.toString() + "/" +
+                                            path.relativize(file).toString().replace("\\", "/")
+                                    allFiles.add(file to relativeName)
+                                }
+                            }
+                        } else {
+                            allFiles.add(path to path.fileName.toString())
+                        }
+                    }
+
+                    // Build configuration
+                    val configBuilder = ApackConfiguration.builder()
+                        .chunkSize(chunkSizeKb * 1024)
+
+                    // Add compression if selected
+                    if (compressionAlgorithm != "none") {
+                        try {
+                            val compressionProvider = when (compressionAlgorithm) {
+                                "zstd" -> CompressionRegistry.zstd()
+                                "lz4" -> CompressionRegistry.lz4()
+                                else -> null
+                            }
+                            if (compressionProvider != null) {
+                                configBuilder.compression(compressionProvider, compressionLevel)
+                            }
+                        } catch (e: Exception) {
+                            // Compression provider not available, continue without compression
+                        }
+                    }
+
+                    // Add encryption if enabled
+                    if (enableEncryption && password.isNotEmpty()) {
+                        try {
+                            withContext(Dispatchers.Main) {
+                                currentFileName = i18n["wizard.create.deriving_key"]
+                            }
+
+                            // Get encryption provider
+                            val encryptionProvider = when (encryptionAlgorithm) {
+                                "aes-256-gcm" -> EncryptionRegistry.aes256Gcm()
+                                "chacha20-poly1305" -> EncryptionRegistry.chaCha20Poly1305()
+                                else -> EncryptionRegistry.aes256Gcm()
+                            }
+
+                            // Create KDF and derive key
+                            val kdf = Argon2idKeyDerivation()
+                            val salt = kdf.generateSalt()
+
+                            // Generate random Content Encryption Key (CEK)
+                            val cek = KeyWrapper.generateAes256Key()
+
+                            // Wrap CEK with password-derived key
+                            val wrappedKey = KeyWrapper.wrapWithPassword(
+                                cek,
+                                password.toCharArray(),
+                                salt,
+                                kdf
+                            )
+
+                            // Get cipher algorithm ID
+                            val cipherAlgorithmId = when (encryptionAlgorithm) {
+                                "aes-256-gcm" -> FormatConstants.ENCRYPTION_AES_256_GCM
+                                "chacha20-poly1305" -> FormatConstants.ENCRYPTION_CHACHA20_POLY1305
+                                else -> FormatConstants.ENCRYPTION_AES_256_GCM
+                            }
+
+                            // Build encryption block
+                            val encryptionBlock = EncryptionBlock.builder()
+                                .kdfAlgorithmId(FormatConstants.KDF_ARGON2ID)
+                                .cipherAlgorithmId(cipherAlgorithmId)
+                                .kdfIterations(3)
+                                .kdfMemory(65536) // 64 MB
+                                .kdfParallelism(4)
+                                .salt(salt)
+                                .wrappedKey(wrappedKey)
+                                .wrappedKeyTag(ByteArray(16)) // Tag is included in wrappedKey for AES Key Wrap
+                                .build()
+
+                            configBuilder.encryption(encryptionProvider, cek, encryptionBlock)
+                        } catch (e: Exception) {
+                            throw RuntimeException("Failed to setup encryption: ${e.message}", e)
+                        }
+                    }
+
+                    val config = configBuilder.build()
+
+                    // Calculate total size for accurate progress tracking
+                    val fileSizes = allFiles.map { (filePath, _) ->
+                        Files.size(filePath)
+                    }
+                    val totalBytes = fileSizes.sum()
+                    var processedBytes = 0L
+
+                    // Threshold for "large file" (10 MB)
+                    val largeFileThreshold = 10 * 1024 * 1024L
+
+                    // Create archive
+                    AetherPackWriter.create(outputPath!!, config).use { writer ->
+                        allFiles.forEachIndexed { index, (filePath, entryName) ->
+                            val fileSize = fileSizes[index]
+                            val isLarge = fileSize > largeFileThreshold
+
+                            // Update progress before processing each file
+                            withContext(Dispatchers.Main) {
+                                currentFileName = entryName
+                                isProcessingLargeFile = isLarge
+                                creationProgress = if (totalBytes > 0) {
+                                    processedBytes.toFloat() / totalBytes
+                                } else {
+                                    index.toFloat() / allFiles.size
+                                }
+                            }
+
+                            // Small delay to allow UI to update
+                            delay(10)
+
+                            writer.addEntry(entryName, filePath)
+
+                            // Update bytes processed
+                            processedBytes += fileSize
+
+                            // Update progress after file is added
+                            withContext(Dispatchers.Main) {
+                                isProcessingLargeFile = false
+                                creationProgress = if (totalBytes > 0) {
+                                    processedBytes.toFloat() / totalBytes
+                                } else {
+                                    (index + 1).toFloat() / allFiles.size
+                                }
+                            }
+                        }
+                    }
+                }
+                creationComplete = true
+            } catch (e: Exception) {
+                creationError = e.message ?: i18n["error.unknown"]
+            } finally {
+                isCreating = false
+            }
+        }
+    }
+
+    // Overwrite confirmation dialog
+    if (showOverwriteDialog) {
+        FileExistsDialog(
+            fileName = outputPath?.fileName?.toString() ?: "",
+            i18n = i18n,
+            onOverwrite = { startCreation() },
+            onChangeLocation = {
+                showOverwriteDialog = false
+                // Open file chooser again
+                val chooser = JFileChooser().apply {
+                    dialogTitle = i18n["wizard.create.output_file"]
+                    fileFilter = javax.swing.filechooser.FileNameExtensionFilter("APACK Archives (*.apack)", "apack")
+                }
+                if (chooser.showSaveDialog(null) == JFileChooser.APPROVE_OPTION) {
+                    var file = chooser.selectedFile
+                    if (!file.name.endsWith(".apack")) {
+                        file = java.io.File(file.absolutePath + ".apack")
+                    }
+                    outputPath = file.toPath()
+                }
+            },
+            onCancel = { showOverwriteDialog = false }
+        )
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Header
@@ -230,162 +418,11 @@ fun CreateArchiveWizard(
                 onNext = { currentStep++ },
                 onCancel = { navigator.goBack() },
                 onFinish = {
-                    isCreating = true
-                    scope.launch {
-                        try {
-                            withContext(Dispatchers.IO) {
-                                // Collect all files to add (expand directories)
-                                val allFiles = mutableListOf<Pair<Path, String>>()
-
-                                withContext(Dispatchers.Main) {
-                                    currentFileName = i18n["wizard.create.scanning"]
-                                    creationProgress = 0f
-                                }
-
-                                for (path in selectedFiles) {
-                                    if (Files.isDirectory(path)) {
-                                        // Walk directory and add all files with relative paths
-                                        Files.walk(path).use { stream ->
-                                            stream.filter { Files.isRegularFile(it) }.forEach { file ->
-                                                val relativeName = path.fileName.toString() + "/" +
-                                                        path.relativize(file).toString().replace("\\", "/")
-                                                allFiles.add(file to relativeName)
-                                            }
-                                        }
-                                    } else {
-                                        allFiles.add(path to path.fileName.toString())
-                                    }
-                                }
-
-                                // Build configuration
-                                val configBuilder = ApackConfiguration.builder()
-                                    .chunkSize(chunkSizeKb * 1024)
-
-                                // Add compression if selected
-                                if (compressionAlgorithm != "none") {
-                                    try {
-                                        val compressionProvider = when (compressionAlgorithm) {
-                                            "zstd" -> CompressionRegistry.zstd()
-                                            "lz4" -> CompressionRegistry.lz4()
-                                            else -> null
-                                        }
-                                        if (compressionProvider != null) {
-                                            configBuilder.compression(compressionProvider, compressionLevel)
-                                        }
-                                    } catch (e: Exception) {
-                                        // Compression provider not available, continue without compression
-                                    }
-                                }
-
-                                // Add encryption if enabled
-                                if (enableEncryption && password.isNotEmpty()) {
-                                    try {
-                                        withContext(Dispatchers.Main) {
-                                            currentFileName = i18n["wizard.create.deriving_key"]
-                                        }
-
-                                        // Get encryption provider
-                                        val encryptionProvider = when (encryptionAlgorithm) {
-                                            "aes-256-gcm" -> EncryptionRegistry.aes256Gcm()
-                                            "chacha20-poly1305" -> EncryptionRegistry.chaCha20Poly1305()
-                                            else -> EncryptionRegistry.aes256Gcm()
-                                        }
-
-                                        // Create KDF and derive key
-                                        val kdf = Argon2idKeyDerivation()
-                                        val salt = kdf.generateSalt()
-
-                                        // Generate random Content Encryption Key (CEK)
-                                        val cek = KeyWrapper.generateAes256Key()
-
-                                        // Wrap CEK with password-derived key
-                                        val wrappedKey = KeyWrapper.wrapWithPassword(
-                                            cek,
-                                            password.toCharArray(),
-                                            salt,
-                                            kdf
-                                        )
-
-                                        // Get cipher algorithm ID
-                                        val cipherAlgorithmId = when (encryptionAlgorithm) {
-                                            "aes-256-gcm" -> FormatConstants.ENCRYPTION_AES_256_GCM
-                                            "chacha20-poly1305" -> FormatConstants.ENCRYPTION_CHACHA20_POLY1305
-                                            else -> FormatConstants.ENCRYPTION_AES_256_GCM
-                                        }
-
-                                        // Build encryption block
-                                        val encryptionBlock = EncryptionBlock.builder()
-                                            .kdfAlgorithmId(FormatConstants.KDF_ARGON2ID)
-                                            .cipherAlgorithmId(cipherAlgorithmId)
-                                            .kdfIterations(3)
-                                            .kdfMemory(65536) // 64 MB
-                                            .kdfParallelism(4)
-                                            .salt(salt)
-                                            .wrappedKey(wrappedKey)
-                                            .wrappedKeyTag(ByteArray(16)) // Tag is included in wrappedKey for AES Key Wrap
-                                            .build()
-
-                                        configBuilder.encryption(encryptionProvider, cek, encryptionBlock)
-                                    } catch (e: Exception) {
-                                        throw RuntimeException("Failed to setup encryption: ${e.message}", e)
-                                    }
-                                }
-
-                                val config = configBuilder.build()
-
-                                // Calculate total size for accurate progress tracking
-                                val fileSizes = allFiles.map { (filePath, _) ->
-                                    Files.size(filePath)
-                                }
-                                val totalBytes = fileSizes.sum()
-                                var processedBytes = 0L
-
-                                // Threshold for "large file" (10 MB)
-                                val largeFileThreshold = 10 * 1024 * 1024L
-
-                                // Create archive
-                                AetherPackWriter.create(outputPath!!, config).use { writer ->
-                                    allFiles.forEachIndexed { index, (filePath, entryName) ->
-                                        val fileSize = fileSizes[index]
-                                        val isLarge = fileSize > largeFileThreshold
-
-                                        // Update progress before processing each file
-                                        withContext(Dispatchers.Main) {
-                                            currentFileName = entryName
-                                            isProcessingLargeFile = isLarge
-                                            creationProgress = if (totalBytes > 0) {
-                                                processedBytes.toFloat() / totalBytes
-                                            } else {
-                                                index.toFloat() / allFiles.size
-                                            }
-                                        }
-
-                                        // Small delay to allow UI to update
-                                        delay(10)
-
-                                        writer.addEntry(entryName, filePath)
-
-                                        // Update bytes processed
-                                        processedBytes += fileSize
-
-                                        // Update progress after file is added
-                                        withContext(Dispatchers.Main) {
-                                            isProcessingLargeFile = false
-                                            creationProgress = if (totalBytes > 0) {
-                                                processedBytes.toFloat() / totalBytes
-                                            } else {
-                                                (index + 1).toFloat() / allFiles.size
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            creationComplete = true
-                        } catch (e: Exception) {
-                            creationError = e.message ?: i18n["error.unknown"]
-                        } finally {
-                            isCreating = false
-                        }
+                    // Check if file already exists
+                    if (outputPath != null && Files.exists(outputPath!!)) {
+                        showOverwriteDialog = true
+                    } else {
+                        startCreation()
                     }
                 },
                 i18n = i18n
@@ -1210,3 +1247,143 @@ private fun outlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedPlaceholderColor = FluentTheme.colors.text.text.secondary,
     unfocusedPlaceholderColor = FluentTheme.colors.text.text.secondary
 )
+
+@Composable
+private fun FileExistsDialog(
+    fileName: String,
+    i18n: I18n,
+    onOverwrite: () -> Unit,
+    onChangeLocation: () -> Unit,
+    onCancel: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onCancel) {
+        Column(
+            modifier = Modifier
+                .width(480.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(FluentTheme.colors.background.solid.base)
+                .padding(24.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Regular.Warning,
+                    contentDescription = null,
+                    modifier = Modifier.size(32.dp),
+                    tint = AetherColors.Warning
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = i18n["dialog.file_exists.title"],
+                    style = FluentTheme.typography.subtitle
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = i18n.format("dialog.file_exists.message", fileName),
+                style = FluentTheme.typography.body,
+                color = FluentTheme.colors.text.text.secondary
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                DialogButton(onClick = onCancel) {
+                    Text(i18n["common.cancel"])
+                }
+                DialogButton(onClick = onChangeLocation) {
+                    Icon(
+                        imageVector = Icons.Regular.FolderOpen,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(i18n["dialog.file_exists.change_location"])
+                }
+                DialogAccentButton(onClick = onOverwrite) {
+                    Icon(
+                        imageVector = Icons.Regular.ArrowSync,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(i18n["dialog.file_exists.overwrite"])
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DialogButton(
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+
+    val backgroundColor = when {
+        !enabled -> FluentTheme.colors.subtleFill.disabled
+        isHovered -> FluentTheme.colors.subtleFill.tertiary
+        else -> FluentTheme.colors.subtleFill.secondary
+    }
+
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(backgroundColor)
+            .hoverable(interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick
+            )
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+        content = content
+    )
+}
+
+@Composable
+private fun DialogAccentButton(
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+
+    val backgroundColor = when {
+        !enabled -> AetherColors.AccentPrimary.copy(alpha = 0.5f)
+        isHovered -> AetherColors.AccentHover
+        else -> AetherColors.AccentPrimary
+    }
+
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.material3.LocalContentColor provides Color.White,
+        com.konyaco.fluent.LocalContentColor provides Color.White
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .background(backgroundColor)
+                .hoverable(interactionSource)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    enabled = enabled,
+                    onClick = onClick
+                )
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+            content = content
+        )
+    }
+}

@@ -64,6 +64,18 @@ fun DashboardScreen(
     i18n: I18n,
     navigator: Navigator
 ) {
+    var showFileNotFoundError by remember { mutableStateOf(false) }
+    var deletedFileName by remember { mutableStateOf("") }
+
+    // Error dialog for deleted files
+    if (showFileNotFoundError) {
+        FileNotFoundDialog(
+            fileName = deletedFileName,
+            i18n = i18n,
+            onDismiss = { showFileNotFoundError = false }
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -205,7 +217,12 @@ fun DashboardScreen(
                         RecentFileRow(
                             file = file,
                             onClick = {
-                                navigator.navigate(Screen.Inspector(file.path))
+                                if (file.exists) {
+                                    navigator.navigate(Screen.Inspector(file.path))
+                                } else {
+                                    deletedFileName = file.fileName
+                                    showFileNotFoundError = true
+                                }
                             },
                             onRemove = {
                                 appState.removeRecentFile(file.path)
@@ -405,5 +422,89 @@ private fun openArchiveForVerify(navigator: Navigator) {
     if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
         val path = chooser.selectedFile.toPath()
         navigator.navigate(Screen.VerifyWizard(path))
+    }
+}
+
+@Composable
+private fun FileNotFoundDialog(
+    fileName: String,
+    i18n: I18n,
+    onDismiss: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .width(400.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(FluentTheme.colors.background.solid.base)
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                imageVector = Icons.Regular.ErrorCircle,
+                contentDescription = null,
+                modifier = Modifier.size(48.dp),
+                tint = AetherColors.Error
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = i18n["common.error"],
+                style = FluentTheme.typography.subtitle
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = i18n["error.file_deleted_or_moved"],
+                style = FluentTheme.typography.body,
+                color = FluentTheme.colors.text.text.secondary
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = fileName,
+                style = FluentTheme.typography.caption,
+                color = FluentTheme.colors.text.text.disabled
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            DialogAccentButton(onClick = onDismiss) {
+                Text(i18n["common.ok"])
+            }
+        }
+    }
+}
+
+@Composable
+private fun DialogAccentButton(
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+
+    val backgroundColor = when {
+        !enabled -> AetherColors.AccentPrimary.copy(alpha = 0.5f)
+        isHovered -> AetherColors.AccentHover
+        else -> AetherColors.AccentPrimary
+    }
+
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.material3.LocalContentColor provides Color.White,
+        com.konyaco.fluent.LocalContentColor provides Color.White
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .background(backgroundColor)
+                .hoverable(interactionSource)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    enabled = enabled,
+                    onClick = onClick
+                )
+                .padding(horizontal = 24.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+            content = content
+        )
     }
 }
