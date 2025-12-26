@@ -29,10 +29,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.konyaco.fluent.FluentTheme
 import androidx.compose.material3.OutlinedTextField
@@ -42,11 +47,13 @@ import com.konyaco.fluent.component.Icon
 import com.konyaco.fluent.component.Text
 import com.konyaco.fluent.icons.Icons
 import com.konyaco.fluent.icons.regular.*
-import de.splatgames.aether.pack.core.AetherPackReader
 import de.splatgames.aether.pack.gui.i18n.I18n
 import de.splatgames.aether.pack.gui.navigation.Navigator
 import de.splatgames.aether.pack.gui.state.AppState
+import de.splatgames.aether.pack.gui.ui.components.FluentAccentButton
+import de.splatgames.aether.pack.gui.ui.components.FluentSectionCard
 import de.splatgames.aether.pack.gui.ui.theme.AetherColors
+import de.splatgames.aether.pack.gui.ui.theme.FluentTokens
 import de.splatgames.aether.pack.gui.util.ArchiveUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -73,15 +80,16 @@ fun ExtractWizard(
     var isExtracting by remember { mutableStateOf(false) }
     var extractionComplete by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var extractionProgress by remember { mutableStateOf(0f) }
+    var currentFileName by remember { mutableStateOf("") }
+    var isProcessingLargeFile by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     // Check if archive is encrypted
     LaunchedEffect(archivePath) {
         withContext(Dispatchers.IO) {
             try {
-                AetherPackReader.open(archivePath).use { reader ->
-                    isEncrypted = reader.fileHeader.isEncrypted
-                }
+                isEncrypted = ArchiveUtils.isEncrypted(archivePath)
             } catch (e: Exception) {
                 // Will be handled during extraction
             }
@@ -121,6 +129,7 @@ fun ExtractWizard(
                 modifier = Modifier
                     .size(32.dp)
                     .clip(RoundedCornerShape(4.dp))
+                    .pointerHoverIcon(PointerIcon.Hand)
                     .clickable(onClick = { navigator.goBack() }),
                 contentAlignment = Alignment.Center
             ) {
@@ -150,7 +159,12 @@ fun ExtractWizard(
                     )
                 }
                 isExtracting -> {
-                    ExtractingContent(i18n)
+                    ExtractingContent(
+                        progress = extractionProgress,
+                        currentEntry = currentFileName,
+                        isIndeterminate = isProcessingLargeFile,
+                        i18n = i18n
+                    )
                 }
                 else -> {
                     Column(
@@ -159,16 +173,14 @@ fun ExtractWizard(
                             .widthIn(max = 600.dp)
                     ) {
                         // Output directory
-                        SectionCard(title = i18n["wizard.extract.output_dir"]) {
+                        FluentSectionCard(title = i18n["wizard.extract.output_dir"]) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 OutlinedTextField(
                                     value = outputDir.toString(),
                                     onValueChange = { },
                                     readOnly = true,
                                     modifier = Modifier.weight(1f),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = AetherColors.AccentPrimary
-                                    )
+                                    colors = outlinedTextFieldColors()
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Button(onClick = {
@@ -188,7 +200,7 @@ fun ExtractWizard(
                         // Password field if encrypted
                         if (isEncrypted) {
                             Spacer(modifier = Modifier.height(16.dp))
-                            SectionCard(title = i18n["wizard.extract.password_required"]) {
+                            FluentSectionCard(title = i18n["wizard.extract.password_required"]) {
                                 Text(
                                     text = i18n["wizard.extract.enter_password"],
                                     style = FluentTheme.typography.caption,
@@ -201,20 +213,19 @@ fun ExtractWizard(
                                     label = { androidx.compose.material3.Text(i18n["wizard.create.password"]) },
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true,
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = AetherColors.AccentPrimary,
-                                        cursorColor = AetherColors.AccentPrimary
-                                    )
+                                    visualTransformation = PasswordVisualTransformation(),
+                                    colors = outlinedTextFieldColors()
                                 )
                             }
                         }
 
                         // Options
                         Spacer(modifier = Modifier.height(16.dp))
-                        SectionCard(title = i18n["settings.behavior"]) {
+                        FluentSectionCard(title = i18n["settings.behavior"]) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .pointerHoverIcon(PointerIcon.Hand)
                                     .clickable { overwrite = !overwrite }
                                     .padding(vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -245,15 +256,17 @@ fun ExtractWizard(
                     .fillMaxWidth()
                     .background(FluentTheme.colors.background.solid.base)
                     .padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Button(onClick = { navigator.goBack() }) {
                     Text(i18n["wizard.cancel"])
                 }
 
-                AccentButton(
+                FluentAccentButton(
                     onClick = {
                         isExtracting = true
+                        extractionProgress = 0f
                         scope.launch {
                             try {
                                 withContext(Dispatchers.IO) {
@@ -261,17 +274,56 @@ fun ExtractWizard(
                                     // Pass password for encrypted archives
                                     val passwordToUse = if (isEncrypted && password.isNotEmpty()) password else null
                                     ArchiveUtils.openArchive(archivePath, passwordToUse).use { reader ->
-                                        for (entry in reader.entries) {
-                                            val outputPath = outputDir.resolve(entry.name)
-                                            Files.createDirectories(outputPath.parent)
+                                        val entries = reader.entries.toList()
 
-                                            if (!overwrite && Files.exists(outputPath)) {
-                                                continue
+                                        // Calculate total size for accurate progress tracking
+                                        val totalBytes = entries.sumOf { it.originalSize }
+                                        var processedBytes = 0L
+
+                                        // Threshold for "large file" (10 MB)
+                                        val largeFileThreshold = 10 * 1024 * 1024L
+
+                                        entries.forEachIndexed { index, entry ->
+                                            val entryOutputPath = outputDir.resolve(entry.name)
+                                            Files.createDirectories(entryOutputPath.parent)
+
+                                            if (!overwrite && Files.exists(entryOutputPath)) {
+                                                processedBytes += entry.originalSize
+                                                return@forEachIndexed
                                             }
 
+                                            val isLarge = entry.originalSize > largeFileThreshold
+
+                                            // Update progress before processing
+                                            withContext(Dispatchers.Main) {
+                                                currentFileName = entry.name
+                                                isProcessingLargeFile = isLarge
+                                                extractionProgress = if (totalBytes > 0) {
+                                                    processedBytes.toFloat() / totalBytes
+                                                } else {
+                                                    index.toFloat() / entries.size
+                                                }
+                                            }
+
+                                            // Small delay to allow UI to update
+                                            kotlinx.coroutines.delay(10)
+
                                             reader.getInputStream(entry).use { input ->
-                                                Files.newOutputStream(outputPath).use { output ->
+                                                Files.newOutputStream(entryOutputPath).use { output ->
                                                     input.copyTo(output)
+                                                }
+                                            }
+
+                                            // Update bytes processed after file is extracted
+                                            processedBytes += entry.originalSize
+
+                                            // Update progress after file is done
+                                            withContext(Dispatchers.Main) {
+                                                isProcessingLargeFile = false
+                                                extractionProgress = if (totalBytes > 0) {
+                                                    processedBytes.toFloat() / totalBytes
+                                                } else {
+                                                    (index + 1).toFloat() / entries.size
                                                 }
                                             }
                                         }
@@ -279,9 +331,24 @@ fun ExtractWizard(
                                 }
                                 extractionComplete = true
                             } catch (e: Exception) {
-                                errorMessage = e.message ?: i18n["error.unknown"]
+                                // Check for common decryption errors and provide user-friendly messages
+                                errorMessage = when {
+                                    e.message?.contains("tag mismatch", ignoreCase = true) == true ||
+                                    e.message?.contains("integrity check", ignoreCase = true) == true ||
+                                    e.message?.contains("AEADBadTagException", ignoreCase = true) == true ||
+                                    e.message?.contains("mac check", ignoreCase = true) == true ||
+                                    e.message?.contains("authentication tag", ignoreCase = true) == true -> {
+                                        i18n["error.wrong_password"]
+                                    }
+                                    e.message?.contains("unwrap", ignoreCase = true) == true ||
+                                    e.message?.contains("InvalidKeyException", ignoreCase = true) == true -> {
+                                        i18n["error.wrong_password"]
+                                    }
+                                    else -> e.message ?: i18n["error.unknown"]
+                                }
                             } finally {
                                 isExtracting = false
+                                isProcessingLargeFile = false
                             }
                         }
                     },
@@ -301,62 +368,65 @@ fun ExtractWizard(
 }
 
 @Composable
-private fun SectionCard(
-    title: String,
-    content: @Composable ColumnScope.() -> Unit
+private fun ExtractingContent(
+    progress: Float,
+    currentEntry: String,
+    isIndeterminate: Boolean,
+    i18n: I18n
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
-            .background(FluentTheme.colors.background.card.default)
-            .padding(16.dp)
-    ) {
-        Text(
-            text = title,
-            style = FluentTheme.typography.bodyStrong,
-            color = AetherColors.AccentPrimary
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        content()
-    }
-}
-
-@Composable
-private fun AccentButton(
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-    content: @Composable RowScope.() -> Unit
-) {
-    val backgroundColor = if (enabled) AetherColors.AccentPrimary else AetherColors.AccentPrimary.copy(alpha = 0.5f)
-
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(backgroundColor)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content
-    )
-}
-
-@Composable
-private fun ExtractingContent(i18n: I18n) {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.widthIn(max = 400.dp)
+        ) {
             CircularProgressIndicator(
                 color = AetherColors.AccentPrimary,
                 modifier = Modifier.size(48.dp)
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(24.dp))
             Text(
                 text = i18n["wizard.extract.extracting"],
-                style = FluentTheme.typography.body
+                style = FluentTheme.typography.subtitle
             )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = currentEntry,
+                style = FluentTheme.typography.caption,
+                color = FluentTheme.colors.text.text.secondary
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+
+            if (isIndeterminate) {
+                // Show indeterminate progress for large files
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = AetherColors.AccentPrimary,
+                    trackColor = FluentTheme.colors.subtleFill.secondary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = i18n["common.please_wait"],
+                    style = FluentTheme.typography.caption,
+                    color = FluentTheme.colors.text.text.secondary
+                )
+            } else {
+                // Show determinate progress
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = AetherColors.AccentPrimary,
+                    trackColor = FluentTheme.colors.subtleFill.secondary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "${(progress * 100).toInt()}%",
+                    style = FluentTheme.typography.caption,
+                    color = FluentTheme.colors.text.text.secondary
+                )
+            }
         }
     }
 }
@@ -424,3 +494,19 @@ private fun ErrorContent(
         }
     }
 }
+
+/**
+ * Creates consistent OutlinedTextField colors for theme compatibility.
+ */
+@Composable
+private fun outlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = FluentTheme.colors.text.text.primary,
+    unfocusedTextColor = FluentTheme.colors.text.text.primary,
+    focusedBorderColor = AetherColors.AccentPrimary,
+    unfocusedBorderColor = FluentTheme.colors.stroke.control.default,
+    focusedLabelColor = AetherColors.AccentPrimary,
+    unfocusedLabelColor = FluentTheme.colors.text.text.secondary,
+    cursorColor = AetherColors.AccentPrimary,
+    focusedPlaceholderColor = FluentTheme.colors.text.text.secondary,
+    unfocusedPlaceholderColor = FluentTheme.colors.text.text.secondary
+)

@@ -38,19 +38,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.unit.dp
 import com.konyaco.fluent.FluentTheme
 import com.konyaco.fluent.component.Button
 import com.konyaco.fluent.component.Icon
 import com.konyaco.fluent.component.Text
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.konyaco.fluent.icons.Icons
 import com.konyaco.fluent.icons.regular.*
 import de.splatgames.aether.pack.gui.i18n.I18n
 import de.splatgames.aether.pack.gui.navigation.Navigator
 import de.splatgames.aether.pack.gui.state.AppState
+import de.splatgames.aether.pack.gui.ui.components.FluentAccentButton
 import de.splatgames.aether.pack.gui.ui.theme.AetherColors
+import de.splatgames.aether.pack.gui.ui.theme.FluentTokens
 import de.splatgames.aether.pack.gui.util.ArchiveUtils
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.nio.file.Path
 
@@ -74,51 +82,86 @@ fun VerifyWizard(
     i18n: I18n,
     navigator: Navigator
 ) {
-    var isVerifying by remember { mutableStateOf(true) }
+    var isVerifying by remember { mutableStateOf(false) }
     var verificationComplete by remember { mutableStateOf(false) }
     var results by remember { mutableStateOf<List<EntryVerificationResult>>(emptyList()) }
     var currentEntry by remember { mutableStateOf("") }
     var progress by remember { mutableStateOf(0f) }
+    var isProcessingLargeFile by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Start verification automatically
+    // Encryption state
+    var isEncrypted by remember { mutableStateOf(false) }
+    var needsPassword by remember { mutableStateOf(false) }
+    var password by remember { mutableStateOf("") }
+    var checkingEncryption by remember { mutableStateOf(true) }
+
+    val scope = rememberCoroutineScope()
+
+    // First check if archive is encrypted
     LaunchedEffect(archivePath) {
         try {
-            val verificationResults = mutableListOf<EntryVerificationResult>()
-
             withContext(Dispatchers.IO) {
-                // Use ArchiveUtils to open with proper compression support
-                ArchiveUtils.openArchive(archivePath).use { reader ->
-                    val entries = reader.entries.toList()
-
-                    entries.forEachIndexed { index, entry ->
-                        // Update UI state on main thread
-                        withContext(Dispatchers.Main) {
-                            currentEntry = entry.name
-                            progress = (index + 1).toFloat() / entries.size
-                        }
-
-                        try {
-                            // Read all bytes to verify checksums
-                            reader.readAllBytes(entry)
-                            verificationResults.add(
-                                EntryVerificationResult(entry.name, true)
-                            )
-                        } catch (e: Exception) {
-                            verificationResults.add(
-                                EntryVerificationResult(entry.name, false, e.message)
-                            )
-                        }
-                    }
-                }
+                isEncrypted = ArchiveUtils.isEncrypted(archivePath)
             }
-
-            results = verificationResults
-            verificationComplete = true
+            if (isEncrypted) {
+                needsPassword = true
+            } else {
+                // Start verification immediately for unencrypted archives
+                isVerifying = true
+                startVerification(
+                    archivePath = archivePath,
+                    password = null,
+                    i18n = i18n,
+                    onProgress = { entry, prog, isLarge ->
+                        currentEntry = entry
+                        progress = prog
+                        isProcessingLargeFile = isLarge
+                    },
+                    onResult = { resultList, error ->
+                        if (error != null) {
+                            errorMessage = error
+                        } else {
+                            results = resultList
+                            verificationComplete = true
+                        }
+                        isVerifying = false
+                        isProcessingLargeFile = false
+                    }
+                )
+            }
         } catch (e: Exception) {
             errorMessage = e.message ?: i18n["error.unknown"]
         } finally {
-            isVerifying = false
+            checkingEncryption = false
+        }
+    }
+
+    // Function to start verification with password
+    fun onPasswordSubmit() {
+        needsPassword = false
+        isVerifying = true
+        scope.launch {
+            startVerification(
+                archivePath = archivePath,
+                password = password,
+                i18n = i18n,
+                onProgress = { entry, prog, isLarge ->
+                    currentEntry = entry
+                    progress = prog
+                    isProcessingLargeFile = isLarge
+                },
+                onResult = { resultList, error ->
+                    if (error != null) {
+                        errorMessage = error
+                    } else {
+                        results = resultList
+                        verificationComplete = true
+                    }
+                    isVerifying = false
+                    isProcessingLargeFile = false
+                }
+            )
         }
     }
 
@@ -158,6 +201,7 @@ fun VerifyWizard(
                 modifier = Modifier
                     .size(32.dp)
                     .clip(RoundedCornerShape(4.dp))
+                    .pointerHoverIcon(PointerIcon.Hand)
                     .clickable(onClick = { navigator.goBack() }),
                 contentAlignment = Alignment.Center
             ) {
@@ -176,13 +220,31 @@ fun VerifyWizard(
                 .padding(24.dp)
         ) {
             when {
+                checkingEncryption -> {
+                    // Loading state while checking encryption
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = AetherColors.AccentPrimary)
+                    }
+                }
                 errorMessage != null -> {
                     ErrorContent(errorMessage!!, i18n)
+                }
+                needsPassword -> {
+                    PasswordInputContent(
+                        password = password,
+                        onPasswordChange = { password = it },
+                        onSubmit = { onPasswordSubmit() },
+                        i18n = i18n
+                    )
                 }
                 isVerifying -> {
                     VerifyingContent(
                         progress = progress,
                         currentEntry = currentEntry,
+                        isIndeterminate = isProcessingLargeFile,
                         i18n = i18n
                     )
                 }
@@ -198,7 +260,32 @@ fun VerifyWizard(
         }
 
         // Footer
-        if (verificationComplete || errorMessage != null) {
+        if (needsPassword) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(FluentTheme.colors.background.solid.base)
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(onClick = { navigator.goBack() }) {
+                    Text(i18n["common.cancel"])
+                }
+                FluentAccentButton(
+                    onClick = { onPasswordSubmit() },
+                    enabled = password.isNotEmpty()
+                ) {
+                    Icon(
+                        imageVector = Icons.Regular.ShieldCheckmark,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(i18n["wizard.verify.title"])
+                }
+            }
+        } else if (verificationComplete || errorMessage != null) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -218,6 +305,7 @@ fun VerifyWizard(
 private fun VerifyingContent(
     progress: Float,
     currentEntry: String,
+    isIndeterminate: Boolean,
     i18n: I18n
 ) {
     Box(
@@ -239,23 +327,40 @@ private fun VerifyingContent(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = i18n.format("wizard.verify.progress", currentEntry),
+                text = currentEntry,
                 style = FluentTheme.typography.caption,
                 color = FluentTheme.colors.text.text.secondary
             )
             Spacer(modifier = Modifier.height(24.dp))
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth(),
-                color = AetherColors.AccentPrimary,
-                trackColor = FluentTheme.colors.subtleFill.secondary
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "${(progress * 100).toInt()}%",
-                style = FluentTheme.typography.caption,
-                color = FluentTheme.colors.text.text.secondary
-            )
+
+            if (isIndeterminate) {
+                // Show indeterminate progress for large files
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = AetherColors.AccentPrimary,
+                    trackColor = FluentTheme.colors.subtleFill.secondary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = i18n["common.please_wait"],
+                    style = FluentTheme.typography.caption,
+                    color = FluentTheme.colors.text.text.secondary
+                )
+            } else {
+                // Show determinate progress
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = AetherColors.AccentPrimary,
+                    trackColor = FluentTheme.colors.subtleFill.secondary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "${(progress * 100).toInt()}%",
+                    style = FluentTheme.typography.caption,
+                    color = FluentTheme.colors.text.text.secondary
+                )
+            }
         }
     }
 }
@@ -373,6 +478,68 @@ private fun ResultRow(
 }
 
 @Composable
+private fun PasswordInputContent(
+    password: String,
+    onPasswordChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    i18n: I18n
+) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.widthIn(max = 400.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Regular.LockClosed,
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = AetherColors.Encrypted
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                text = i18n["wizard.extract.password_required"],
+                style = FluentTheme.typography.subtitle
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = i18n["wizard.extract.enter_password"],
+                style = FluentTheme.typography.body,
+                color = FluentTheme.colors.text.text.secondary
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            OutlinedTextField(
+                value = password,
+                onValueChange = onPasswordChange,
+                modifier = Modifier.fillMaxWidth(),
+                label = { androidx.compose.material3.Text(i18n["wizard.create.password"]) },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                colors = outlinedTextFieldColors()
+            )
+        }
+    }
+}
+
+/**
+ * Creates consistent OutlinedTextField colors for theme compatibility.
+ */
+@Composable
+private fun outlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = FluentTheme.colors.text.text.primary,
+    unfocusedTextColor = FluentTheme.colors.text.text.primary,
+    focusedBorderColor = AetherColors.AccentPrimary,
+    unfocusedBorderColor = FluentTheme.colors.stroke.control.default,
+    focusedLabelColor = AetherColors.AccentPrimary,
+    unfocusedLabelColor = FluentTheme.colors.text.text.secondary,
+    cursorColor = AetherColors.AccentPrimary,
+    focusedPlaceholderColor = FluentTheme.colors.text.text.secondary,
+    unfocusedPlaceholderColor = FluentTheme.colors.text.text.secondary
+)
+
+@Composable
 private fun ErrorContent(message: String, i18n: I18n) {
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -397,6 +564,100 @@ private fun ErrorContent(message: String, i18n: I18n) {
                 style = FluentTheme.typography.body,
                 color = FluentTheme.colors.text.text.secondary
             )
+        }
+    }
+}
+
+/**
+ * Helper function to perform verification in a coroutine.
+ */
+private suspend fun startVerification(
+    archivePath: Path,
+    password: String?,
+    i18n: I18n,
+    onProgress: (entry: String, progress: Float, isLargeFile: Boolean) -> Unit,
+    onResult: (results: List<EntryVerificationResult>, error: String?) -> Unit
+) {
+    try {
+        val verificationResults = mutableListOf<EntryVerificationResult>()
+
+        withContext(Dispatchers.IO) {
+            // Use ArchiveUtils to open with proper compression and encryption support
+            ArchiveUtils.openArchive(archivePath, password).use { reader ->
+                val entries = reader.entries.toList()
+
+                // Calculate total size for accurate progress tracking
+                val totalBytes = entries.sumOf { it.originalSize }
+                var processedBytes = 0L
+
+                // Threshold for "large file" (10 MB)
+                val largeFileThreshold = 10 * 1024 * 1024L
+
+                entries.forEachIndexed { index, entry ->
+                    val isLarge = entry.originalSize > largeFileThreshold
+
+                    // Update UI state on main thread BEFORE processing
+                    withContext(Dispatchers.Main) {
+                        val currentProgress = if (totalBytes > 0) {
+                            processedBytes.toFloat() / totalBytes
+                        } else {
+                            index.toFloat() / entries.size
+                        }
+                        onProgress(entry.name, currentProgress, isLarge)
+                    }
+
+                    // Small delay to allow UI to update
+                    kotlinx.coroutines.delay(10)
+
+                    try {
+                        // Read all bytes to verify checksums
+                        reader.readAllBytes(entry)
+                        verificationResults.add(
+                            EntryVerificationResult(entry.name, true)
+                        )
+                    } catch (e: Exception) {
+                        verificationResults.add(
+                            EntryVerificationResult(entry.name, false, e.message)
+                        )
+                    }
+
+                    // Update bytes processed AFTER file is verified
+                    processedBytes += entry.originalSize
+
+                    // Update progress after file is done
+                    withContext(Dispatchers.Main) {
+                        val currentProgress = if (totalBytes > 0) {
+                            processedBytes.toFloat() / totalBytes
+                        } else {
+                            (index + 1).toFloat() / entries.size
+                        }
+                        onProgress(entry.name, currentProgress, false)
+                    }
+                }
+            }
+        }
+
+        withContext(Dispatchers.Main) {
+            onResult(verificationResults, null)
+        }
+    } catch (e: Exception) {
+        withContext(Dispatchers.Main) {
+            // Check for common decryption errors and provide user-friendly messages
+            val errorMessage = when {
+                e.message?.contains("tag mismatch", ignoreCase = true) == true ||
+                e.message?.contains("integrity check", ignoreCase = true) == true ||
+                e.message?.contains("AEADBadTagException", ignoreCase = true) == true ||
+                e.message?.contains("mac check", ignoreCase = true) == true ||
+                e.message?.contains("authentication tag", ignoreCase = true) == true -> {
+                    i18n["error.wrong_password"]
+                }
+                e.message?.contains("unwrap", ignoreCase = true) == true ||
+                e.message?.contains("InvalidKeyException", ignoreCase = true) == true -> {
+                    i18n["error.wrong_password"]
+                }
+                else -> e.message ?: i18n["error.unknown"]
+            }
+            onResult(emptyList(), errorMessage)
         }
     }
 }

@@ -45,6 +45,7 @@ import com.konyaco.fluent.component.Icon
 import com.konyaco.fluent.component.Text
 import com.konyaco.fluent.icons.Icons
 import com.konyaco.fluent.icons.regular.Archive
+import com.konyaco.fluent.icons.regular.DocumentAdd
 import de.splatgames.aether.pack.gui.i18n.I18n
 import de.splatgames.aether.pack.gui.ui.theme.AetherColors
 import java.awt.datatransfer.DataFlavor
@@ -57,6 +58,7 @@ import java.nio.file.Path
  *
  * @param onFilesDropped Callback when .apack files are dropped
  * @param i18n Internationalization provider
+ * @param enabled Whether drag & drop is enabled (default true)
  * @param content The content to wrap
  */
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
@@ -65,9 +67,131 @@ fun DragDropContainer(
     onFilesDropped: (List<Path>) -> Unit,
     i18n: I18n,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     content: @Composable () -> Unit
 ) {
     var isDragging by remember { mutableStateOf(false) }
+
+    val dragAndDropTarget = remember(enabled) {
+        object : DragAndDropTarget {
+            override fun onStarted(event: DragAndDropEvent) {
+                if (enabled) isDragging = true
+            }
+
+            override fun onEnded(event: DragAndDropEvent) {
+                isDragging = false
+            }
+
+            override fun onExited(event: DragAndDropEvent) {
+                isDragging = false
+            }
+
+            override fun onDrop(event: DragAndDropEvent): Boolean {
+                isDragging = false
+                if (!enabled) return false
+
+                try {
+                    val transferable = event.awtTransferable
+                    if (transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+                        @Suppress("UNCHECKED_CAST")
+                        val files = transferable.getTransferData(DataFlavor.javaFileListFlavor) as List<File>
+
+                        val apackFiles = files
+                            .filter { it.extension.equals("apack", ignoreCase = true) }
+                            .map { it.toPath() }
+
+                        if (apackFiles.isNotEmpty()) {
+                            onFilesDropped(apackFiles)
+                            return true
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Ignore drag & drop errors
+                }
+
+                return false
+            }
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .dragAndDropTarget(
+                shouldStartDragAndDrop = { enabled },
+                target = dragAndDropTarget
+            )
+    ) {
+        content()
+
+        // Drag overlay (only when enabled)
+        AnimatedVisibility(
+            visible = isDragging && enabled,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(FluentTheme.colors.background.mica.base.copy(alpha = 0.9f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(48.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .border(
+                            width = 2.dp,
+                            color = AetherColors.AccentPrimary,
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .background(FluentTheme.colors.background.card.default)
+                        .padding(48.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Regular.Archive,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = AetherColors.AccentPrimary
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = i18n["dragdrop.drop_here"],
+                        style = FluentTheme.typography.subtitle,
+                        color = AetherColors.AccentPrimary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = i18n["dragdrop.apack_only"],
+                        style = FluentTheme.typography.caption,
+                        color = FluentTheme.colors.text.text.secondary
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Container with drag & drop support for any files.
+ * Used in the Create Archive wizard.
+ *
+ * @param onFilesDropped Callback when files are dropped
+ * @param i18n Internationalization provider
+ * @param content The content to wrap
+ */
+@OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
+@Composable
+fun FileDragDropContainer(
+    onFilesDropped: (List<Path>) -> Unit,
+    i18n: I18n,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    var isDragging by remember { mutableStateOf(false) }
+
+    // Use rememberUpdatedState to always have the latest callback
+    val currentOnFilesDropped by rememberUpdatedState(onFilesDropped)
 
     val dragAndDropTarget = remember {
         object : DragAndDropTarget {
@@ -92,12 +216,12 @@ fun DragDropContainer(
                         @Suppress("UNCHECKED_CAST")
                         val files = transferable.getTransferData(DataFlavor.javaFileListFlavor) as List<File>
 
-                        val apackFiles = files
-                            .filter { it.extension.equals("apack", ignoreCase = true) }
+                        val validFiles = files
+                            .filter { it.exists() }
                             .map { it.toPath() }
 
-                        if (apackFiles.isNotEmpty()) {
-                            onFilesDropped(apackFiles)
+                        if (validFiles.isNotEmpty()) {
+                            currentOnFilesDropped(validFiles)
                             return true
                         }
                     }
@@ -145,22 +269,16 @@ fun DragDropContainer(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Icon(
-                        imageVector = Icons.Regular.Archive,
+                        imageVector = Icons.Regular.DocumentAdd,
                         contentDescription = null,
                         modifier = Modifier.size(64.dp),
                         tint = AetherColors.AccentPrimary
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = i18n["dragdrop.drop_here"],
+                        text = i18n["dragdrop.drop_files_here"],
                         style = FluentTheme.typography.subtitle,
                         color = AetherColors.AccentPrimary
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = i18n["dragdrop.apack_only"],
-                        style = FluentTheme.typography.caption,
-                        color = FluentTheme.colors.text.text.secondary
                     )
                 }
             }

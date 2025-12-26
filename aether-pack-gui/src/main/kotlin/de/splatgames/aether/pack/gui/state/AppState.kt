@@ -26,6 +26,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -37,6 +40,12 @@ import java.util.*
  * Contains all shared state for the Aether Pack GUI application.
  */
 class AppState {
+    /**
+     * Application-level coroutine scope for background tasks.
+     * Uses SupervisorJob so child failures don't cancel siblings.
+     */
+    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     /**
      * User settings.
      */
@@ -51,6 +60,11 @@ class AppState {
      * Background task state.
      */
     val taskState = TaskState()
+
+    /**
+     * Create Archive Wizard state (persistent across navigation).
+     */
+    val createWizardState = CreateWizardState(settings, applicationScope)
 
     /**
      * Recently opened files.

@@ -24,8 +24,15 @@ package de.splatgames.aether.pack.gui.util
 
 import de.splatgames.aether.pack.compression.CompressionRegistry
 import de.splatgames.aether.pack.core.AetherPackReader
+import de.splatgames.aether.pack.core.format.EncryptionBlock
+import de.splatgames.aether.pack.core.format.FormatConstants
 import de.splatgames.aether.pack.core.io.ChunkProcessor
+import de.splatgames.aether.pack.crypto.Argon2idKeyDerivation
+import de.splatgames.aether.pack.crypto.EncryptionRegistry
+import de.splatgames.aether.pack.crypto.KeyWrapper
+import de.splatgames.aether.pack.crypto.Pbkdf2KeyDerivation
 import java.nio.file.Path
+import javax.crypto.SecretKey
 
 /**
  * Utility functions for working with APACK archives.
@@ -33,19 +40,76 @@ import java.nio.file.Path
 object ArchiveUtils {
 
     /**
+     * Checks if an archive is encrypted.
+     *
+     * @param archivePath Path to the archive file
+     * @return true if the archive is encrypted
+     */
+    fun isEncrypted(archivePath: Path): Boolean {
+        AetherPackReader.open(archivePath).use { reader ->
+            return reader.fileHeader.isEncrypted
+        }
+    }
+
+    /**
+     * Gets the encryption block from an encrypted archive.
+     *
+     * @param archivePath Path to the archive file
+     * @return The encryption block, or null if not encrypted
+     */
+    fun getEncryptionBlock(archivePath: Path): EncryptionBlock? {
+        AetherPackReader.open(archivePath).use { reader ->
+            return reader.encryptionBlock
+        }
+    }
+
+    /**
+     * Derives the decryption key from a password using the archive's encryption block.
+     *
+     * @param encryptionBlock The encryption block containing KDF parameters
+     * @param password The password to derive the key from
+     * @return The derived content encryption key (CEK)
+     * @throws Exception if key derivation fails (e.g., wrong password)
+     */
+    fun deriveKey(encryptionBlock: EncryptionBlock, password: String): SecretKey {
+        // Create the appropriate KDF based on the algorithm ID
+        // Argon2id constructor: (memoryKiB, iterations, parallelism, saltLength)
+        val kdf = when (encryptionBlock.kdfAlgorithmId()) {
+            FormatConstants.KDF_ARGON2ID -> Argon2idKeyDerivation(
+                encryptionBlock.kdfMemory(),      // memoryKiB
+                encryptionBlock.kdfIterations(),   // iterations (time cost)
+                encryptionBlock.kdfParallelism(),  // parallelism
+                encryptionBlock.salt().size        // saltLength
+            )
+            FormatConstants.KDF_PBKDF2_SHA256 -> Pbkdf2KeyDerivation(
+                encryptionBlock.kdfIterations(),   // iterations
+                encryptionBlock.salt().size        // saltLength
+            )
+            else -> throw IllegalStateException("Unknown KDF algorithm ID: ${encryptionBlock.kdfAlgorithmId()}")
+        }
+
+        // Unwrap the content encryption key using the password
+        val cek = KeyWrapper.unwrapWithPassword(
+            encryptionBlock.wrappedKey(),
+            password.toCharArray(),
+            encryptionBlock.salt(),
+            kdf,
+            "AES"
+        )
+
+        return cek
+    }
+
+    /**
      * Creates a ChunkProcessor configured for reading the specified archive.
      *
      * This function reads the archive metadata to determine which compression
-     * algorithm is used, then looks up the appropriate provider from the registry
-     * and builds a ChunkProcessor.
-     *
-     * Note: Encryption support requires additional password handling and is not
-     * yet implemented in this utility. Use the AetherPackReader API directly
-     * for encrypted archives.
+     * and encryption algorithms are used, then configures the ChunkProcessor
+     * accordingly.
      *
      * @param archivePath Path to the archive file
-     * @param password Optional password for encrypted archives (not yet implemented)
-     * @return A ChunkProcessor configured for the archive's compression
+     * @param password Password for encrypted archives (required if archive is encrypted)
+     * @return A ChunkProcessor configured for the archive's compression and encryption
      * @throws Exception if providers cannot be found or configuration fails
      */
     fun createChunkProcessor(
@@ -55,11 +119,18 @@ object ArchiveUtils {
         // First, read the archive with pass-through to get metadata
         AetherPackReader.open(archivePath).use { reader ->
             val entries = reader.entries
+            val header = reader.fileHeader
+            val encryptionBlock = reader.encryptionBlock
 
             // Find first entry with compression to get the compression ID
             val compressionId = entries
                 .firstOrNull { it.compressionId != 0 }
                 ?.compressionId ?: 0
+
+            // Find first entry with encryption to get the encryption ID
+            val encryptionId = entries
+                .firstOrNull { it.encryptionId != 0 }
+                ?.encryptionId ?: 0
 
             val builder = ChunkProcessor.builder()
 
@@ -73,22 +144,37 @@ object ArchiveUtils {
                 builder.compression(compressionProvider)
             }
 
-            // Note: Encryption handling would require deriving the key from password
-            // using the KDF parameters from the EncryptionBlock. This is more complex
-            // and requires proper password dialog integration.
+            // Configure encryption if needed
+            if (header.isEncrypted && encryptionBlock != null && encryptionId != 0) {
+                if (password.isNullOrEmpty()) {
+                    throw IllegalStateException("Password required for encrypted archive")
+                }
+
+                // Get encryption provider
+                val encryptionProvider = EncryptionRegistry.getById(encryptionId)
+                    .orElseThrow {
+                        IllegalStateException("Encryption provider not available for ID: $encryptionId. " +
+                            "Make sure the crypto module is on the classpath.")
+                    }
+
+                // Derive the content encryption key from password
+                val cek = deriveKey(encryptionBlock, password)
+
+                builder.encryption(encryptionProvider, cek)
+            }
 
             return builder.build()
         }
     }
 
     /**
-     * Opens an archive with the appropriate ChunkProcessor for its compression.
+     * Opens an archive with the appropriate ChunkProcessor for its compression and encryption.
      *
      * This is a convenience function that creates the ChunkProcessor and opens
      * the archive in one call.
      *
      * @param archivePath Path to the archive file
-     * @param password Optional password for encrypted archives (not yet implemented)
+     * @param password Password for encrypted archives (required if archive is encrypted)
      * @return An AetherPackReader configured for the archive
      */
     fun openArchive(

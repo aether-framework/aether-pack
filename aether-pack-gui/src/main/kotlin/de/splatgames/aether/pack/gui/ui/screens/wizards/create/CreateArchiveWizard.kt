@@ -42,25 +42,29 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.unit.dp
 import com.konyaco.fluent.FluentTheme
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import com.konyaco.fluent.component.Button
 import com.konyaco.fluent.component.Icon
 import com.konyaco.fluent.component.Text
 import com.konyaco.fluent.icons.Icons
 import com.konyaco.fluent.icons.regular.*
-import de.splatgames.aether.pack.compression.CompressionRegistry
-import de.splatgames.aether.pack.core.AetherPackWriter
-import de.splatgames.aether.pack.core.ApackConfiguration
 import de.splatgames.aether.pack.gui.i18n.I18n
 import de.splatgames.aether.pack.gui.navigation.Navigator
 import de.splatgames.aether.pack.gui.state.AppState
+import de.splatgames.aether.pack.gui.ui.components.FileDragDropContainer
+import de.splatgames.aether.pack.gui.ui.components.FluentAccentButton
+import de.splatgames.aether.pack.gui.ui.components.FluentSectionCard
+import de.splatgames.aether.pack.gui.ui.components.HelpTooltip
 import de.splatgames.aether.pack.gui.ui.theme.AetherColors
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import de.splatgames.aether.pack.gui.ui.theme.FluentTokens
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.swing.JFileChooser
@@ -69,6 +73,9 @@ import javax.swing.filechooser.FileNameExtensionFilter
 /**
  * Wizard for creating new APACK archives.
  * Redesigned with Fluent Design System styling.
+ *
+ * State is persisted in AppState.createWizardState, allowing users to navigate away
+ * during archive creation and return to see progress or completion status.
  */
 @Composable
 fun CreateArchiveWizard(
@@ -76,24 +83,7 @@ fun CreateArchiveWizard(
     i18n: I18n,
     navigator: Navigator
 ) {
-    var currentStep by remember { mutableStateOf(0) }
-    var selectedFiles by remember { mutableStateOf<List<Path>>(emptyList()) }
-    var compressionAlgorithm by remember { mutableStateOf(appState.settings.defaultCompression) }
-    var compressionLevel by remember { mutableStateOf(appState.settings.defaultCompressionLevel) }
-    var chunkSizeKb by remember { mutableStateOf(appState.settings.defaultChunkSizeKb) }
-    var enableEncryption by remember { mutableStateOf(false) }
-    var encryptionAlgorithm by remember { mutableStateOf("aes-256-gcm") }
-    var password by remember { mutableStateOf("") }
-    var confirmPassword by remember { mutableStateOf("") }
-    var outputPath by remember { mutableStateOf<Path?>(null) }
-
-    // Creation state
-    var isCreating by remember { mutableStateOf(false) }
-    var creationComplete by remember { mutableStateOf(false) }
-    var creationError by remember { mutableStateOf<String?>(null) }
-    var creationProgress by remember { mutableStateOf(0f) }
-    var currentFileName by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
+    val wizardState = appState.createWizardState
 
     val steps = listOf(
         i18n["wizard.create.step.files"],
@@ -102,20 +92,66 @@ fun CreateArchiveWizard(
         i18n["wizard.create.step.output"]
     )
 
+    // Function to start archive creation (uses application-level scope)
+    val startCreation: () -> Unit = {
+        wizardState.startCreation(i18n)
+    }
+
+    // Handle closing the wizard
+    val handleClose: () -> Unit = {
+        // Only reset if not currently creating and user explicitly closes
+        if (!wizardState.isCreating) {
+            wizardState.reset()
+        }
+        navigator.goBack()
+    }
+
+    // Handle closing after completion (reset state)
+    val handleCloseComplete: () -> Unit = {
+        wizardState.reset()
+        navigator.goBack()
+    }
+
+    // Overwrite confirmation dialog
+    if (wizardState.showOverwriteDialog) {
+        FileExistsDialog(
+            fileName = wizardState.outputPath?.fileName?.toString() ?: "",
+            i18n = i18n,
+            onOverwrite = { startCreation() },
+            onChangeLocation = {
+                wizardState.showOverwriteDialog = false
+                // Open file chooser again
+                val chooser = JFileChooser().apply {
+                    dialogTitle = i18n["wizard.create.output_file"]
+                    fileFilter = javax.swing.filechooser.FileNameExtensionFilter("APACK Archives (*.apack)", "apack")
+                }
+                if (chooser.showSaveDialog(null) == JFileChooser.APPROVE_OPTION) {
+                    var file = chooser.selectedFile
+                    if (!file.name.endsWith(".apack")) {
+                        file = java.io.File(file.absolutePath + ".apack")
+                    }
+                    wizardState.outputPath = file.toPath()
+                }
+            },
+            onCancel = { wizardState.showOverwriteDialog = false }
+        )
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         // Header
         WizardHeader(
             title = i18n["wizard.create.title"],
-            currentStep = currentStep,
+            currentStep = wizardState.currentStep,
             totalSteps = steps.size,
-            stepName = steps[currentStep],
-            onClose = { navigator.goBack() },
-            i18n = i18n
+            stepName = steps[wizardState.currentStep],
+            onClose = handleClose,
+            i18n = i18n,
+            showCloseButton = !wizardState.isCreating // Hide close button during creation
         )
 
         // Step Indicator
         StepIndicator(
-            currentStep = currentStep,
+            currentStep = wizardState.currentStep,
             steps = steps
         )
 
@@ -126,67 +162,97 @@ fun CreateArchiveWizard(
                 .padding(24.dp)
         ) {
             when {
-                creationComplete -> {
+                wizardState.creationComplete -> {
                     CreationSuccessContent(
-                        outputPath = outputPath!!,
+                        outputPath = wizardState.outputPath!!,
                         i18n = i18n,
-                        onClose = { navigator.goBack() }
-                    )
-                }
-                creationError != null -> {
-                    CreationErrorContent(
-                        message = creationError!!,
-                        i18n = i18n,
-                        onRetry = {
-                            creationError = null
-                            isCreating = false
+                        onClose = handleCloseComplete,
+                        onOpenInExplorer = {
+                            try {
+                                // Open the folder containing the file and select it
+                                val file = wizardState.outputPath!!.toFile()
+                                if (java.awt.Desktop.isDesktopSupported()) {
+                                    java.awt.Desktop.getDesktop().open(file.parentFile)
+                                }
+                            } catch (e: Exception) {
+                                // Ignore errors opening explorer
+                            }
+                        },
+                        onOpenInApp = {
+                            val path = wizardState.outputPath!!
+                            wizardState.reset()
+                            navigator.navigate(de.splatgames.aether.pack.gui.navigation.Screen.Inspector(path))
                         }
                     )
                 }
-                isCreating -> {
+                wizardState.creationError != null -> {
+                    CreationErrorContent(
+                        message = wizardState.creationError!!,
+                        i18n = i18n,
+                        onRetry = {
+                            wizardState.clearError()
+                        }
+                    )
+                }
+                wizardState.isCreating -> {
                     CreationProgressContent(
-                        progress = creationProgress,
-                        currentFileName = currentFileName,
+                        progress = wizardState.creationProgress,
+                        currentFileName = wizardState.currentFileName,
+                        isIndeterminate = wizardState.isProcessingLargeFile,
                         i18n = i18n
                     )
                 }
-                else -> when (currentStep) {
+                else -> when (wizardState.currentStep) {
                     0 -> FileSelectionStep(
-                        selectedFiles = selectedFiles,
-                        onFilesChanged = { selectedFiles = it },
+                        selectedFiles = wizardState.selectedFiles,
+                        onFilesChanged = { newFiles ->
+                            wizardState.selectedFiles.clear()
+                            wizardState.selectedFiles.addAll(newFiles)
+                        },
                         onFileRemoved = { pathToRemove ->
-                            selectedFiles = selectedFiles.filter { it.toString() != pathToRemove.toString() }
+                            wizardState.selectedFiles.removeAll { it.toString() == pathToRemove.toString() }
                         },
                         i18n = i18n
                     )
                     1 -> CompressionStep(
-                        algorithm = compressionAlgorithm,
-                        onAlgorithmChanged = { compressionAlgorithm = it },
-                        level = compressionLevel,
-                        onLevelChanged = { compressionLevel = it },
-                        chunkSizeKb = chunkSizeKb,
-                        onChunkSizeChanged = { chunkSizeKb = it },
+                        algorithm = wizardState.compressionAlgorithm,
+                        onAlgorithmChanged = { newAlgorithm ->
+                            wizardState.compressionAlgorithm = newAlgorithm
+                            // Clamp level to new algorithm's max
+                            val newMaxLevel = when (newAlgorithm) {
+                                "zstd" -> 22
+                                "lz4" -> 17
+                                else -> 1
+                            }
+                            if (wizardState.compressionLevel > newMaxLevel) {
+                                wizardState.compressionLevel = newMaxLevel
+                            }
+                        },
+                        level = wizardState.compressionLevel,
+                        onLevelChanged = { wizardState.compressionLevel = it },
+                        chunkSizeKb = wizardState.chunkSizeKb,
+                        onChunkSizeChanged = { wizardState.chunkSizeKb = it },
                         i18n = i18n
                     )
                     2 -> EncryptionStep(
-                        enabled = enableEncryption,
-                        onEnabledChanged = { enableEncryption = it },
-                        algorithm = encryptionAlgorithm,
-                        onAlgorithmChanged = { encryptionAlgorithm = it },
-                        password = password,
-                        onPasswordChanged = { password = it },
-                        confirmPassword = confirmPassword,
-                        onConfirmPasswordChanged = { confirmPassword = it },
+                        enabled = wizardState.enableEncryption,
+                        onEnabledChanged = { wizardState.enableEncryption = it },
+                        algorithm = wizardState.encryptionAlgorithm,
+                        onAlgorithmChanged = { wizardState.encryptionAlgorithm = it },
+                        password = wizardState.password,
+                        onPasswordChanged = { wizardState.password = it },
+                        confirmPassword = wizardState.confirmPassword,
+                        onConfirmPasswordChanged = { wizardState.confirmPassword = it },
                         i18n = i18n
                     )
                     3 -> OutputStep(
-                        outputPath = outputPath,
-                        onOutputPathChanged = { outputPath = it },
-                        selectedFiles = selectedFiles,
-                        compressionAlgorithm = compressionAlgorithm,
-                        compressionLevel = compressionLevel,
-                        enableEncryption = enableEncryption,
-                        encryptionAlgorithm = encryptionAlgorithm,
+                        outputPath = wizardState.outputPath,
+                        onOutputPathChanged = { wizardState.outputPath = it },
+                        selectedFiles = wizardState.selectedFiles,
+                        compressionAlgorithm = wizardState.compressionAlgorithm,
+                        compressionLevel = wizardState.compressionLevel,
+                        enableEncryption = wizardState.enableEncryption,
+                        encryptionAlgorithm = wizardState.encryptionAlgorithm,
                         i18n = i18n
                     )
                 }
@@ -194,81 +260,25 @@ fun CreateArchiveWizard(
         }
 
         // Footer - hide when creating or complete
-        if (!isCreating && !creationComplete && creationError == null) {
+        if (!wizardState.isCreating && !wizardState.creationComplete && wizardState.creationError == null) {
             WizardFooter(
-                currentStep = currentStep,
+                currentStep = wizardState.currentStep,
                 totalSteps = steps.size,
-                canGoNext = when (currentStep) {
-                    0 -> selectedFiles.isNotEmpty()
-                    2 -> !enableEncryption || (password.isNotEmpty() && password == confirmPassword)
-                    3 -> outputPath != null
+                canGoNext = when (wizardState.currentStep) {
+                    0 -> wizardState.selectedFiles.isNotEmpty()
+                    2 -> !wizardState.enableEncryption || (wizardState.password.isNotEmpty() && wizardState.password == wizardState.confirmPassword)
+                    3 -> wizardState.outputPath != null
                     else -> true
                 },
-                onBack = { currentStep-- },
-                onNext = { currentStep++ },
-                onCancel = { navigator.goBack() },
+                onBack = { wizardState.currentStep-- },
+                onNext = { wizardState.currentStep++ },
+                onCancel = handleClose,
                 onFinish = {
-                    isCreating = true
-                    scope.launch {
-                        try {
-                            withContext(Dispatchers.IO) {
-                                // Collect all files to add (expand directories)
-                                val allFiles = mutableListOf<Pair<Path, String>>()
-                                for (path in selectedFiles) {
-                                    if (Files.isDirectory(path)) {
-                                        // Walk directory and add all files with relative paths
-                                        Files.walk(path).use { stream ->
-                                            stream.filter { Files.isRegularFile(it) }.forEach { file ->
-                                                val relativeName = path.fileName.toString() + "/" +
-                                                        path.relativize(file).toString().replace("\\", "/")
-                                                allFiles.add(file to relativeName)
-                                            }
-                                        }
-                                    } else {
-                                        allFiles.add(path to path.fileName.toString())
-                                    }
-                                }
-
-                                // Build configuration
-                                val configBuilder = ApackConfiguration.builder()
-                                    .chunkSize(chunkSizeKb * 1024)
-
-                                // Add compression if selected
-                                if (compressionAlgorithm != "none") {
-                                    try {
-                                        val compressionProvider = when (compressionAlgorithm) {
-                                            "zstd" -> CompressionRegistry.zstd()
-                                            "lz4" -> CompressionRegistry.lz4()
-                                            else -> null
-                                        }
-                                        if (compressionProvider != null) {
-                                            configBuilder.compression(compressionProvider, compressionLevel)
-                                        }
-                                    } catch (e: Exception) {
-                                        // Compression provider not available, continue without compression
-                                    }
-                                }
-
-                                val config = configBuilder.build()
-
-                                // Create archive
-                                AetherPackWriter.create(outputPath!!, config).use { writer ->
-                                    allFiles.forEachIndexed { index, (filePath, entryName) ->
-                                        withContext(Dispatchers.Main) {
-                                            currentFileName = entryName
-                                            creationProgress = (index + 1).toFloat() / allFiles.size
-                                        }
-
-                                        writer.addEntry(entryName, filePath)
-                                    }
-                                }
-                            }
-                            creationComplete = true
-                        } catch (e: Exception) {
-                            creationError = e.message ?: i18n["error.unknown"]
-                        } finally {
-                            isCreating = false
-                        }
+                    // Check if file already exists
+                    if (wizardState.outputPath != null && Files.exists(wizardState.outputPath!!)) {
+                        wizardState.showOverwriteDialog = true
+                    } else {
+                        startCreation()
                     }
                 },
                 i18n = i18n
@@ -284,7 +294,8 @@ private fun WizardHeader(
     totalSteps: Int,
     stepName: String,
     onClose: () -> Unit,
-    i18n: I18n
+    i18n: I18n,
+    showCloseButton: Boolean = true
 ) {
     Row(
         modifier = Modifier
@@ -304,18 +315,21 @@ private fun WizardHeader(
                 color = FluentTheme.colors.text.text.secondary
             )
         }
-        Box(
-            modifier = Modifier
-                .size(32.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .clickable(onClick = onClose),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Regular.Dismiss,
-                contentDescription = i18n["common.close"],
-                modifier = Modifier.size(20.dp)
-            )
+        if (showCloseButton) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .pointerHoverIcon(PointerIcon.Hand)
+                    .clickable(onClick = onClose),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Regular.Dismiss,
+                    contentDescription = i18n["common.close"],
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
     }
 }
@@ -369,7 +383,8 @@ private fun WizardFooter(
             .fillMaxWidth()
             .background(FluentTheme.colors.background.solid.base)
             .padding(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Button(onClick = onCancel) {
             Text(i18n["wizard.cancel"])
@@ -388,7 +403,7 @@ private fun WizardFooter(
         }
 
         if (currentStep < totalSteps - 1) {
-            AccentButton(
+            FluentAccentButton(
                 onClick = onNext,
                 enabled = canGoNext
             ) {
@@ -401,7 +416,7 @@ private fun WizardFooter(
                 )
             }
         } else {
-            AccentButton(
+            FluentAccentButton(
                 onClick = onFinish,
                 enabled = canGoNext
             ) {
@@ -418,131 +433,134 @@ private fun WizardFooter(
 }
 
 @Composable
-private fun AccentButton(
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-    content: @Composable RowScope.() -> Unit
-) {
-    val backgroundColor = if (enabled) AetherColors.AccentPrimary else AetherColors.AccentPrimary.copy(alpha = 0.5f)
-
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(backgroundColor)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content
-    )
-}
-
-@Composable
 private fun FileSelectionStep(
     selectedFiles: List<Path>,
     onFilesChanged: (List<Path>) -> Unit,
     onFileRemoved: (Path) -> Unit,
     i18n: I18n
 ) {
-    Column {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = {
-                val chooser = JFileChooser().apply {
-                    isMultiSelectionEnabled = true
-                    dialogTitle = i18n["wizard.create.add_files"]
-                }
-                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                    val existingPaths = selectedFiles.map { it.toString() }.toSet()
-                    val newFiles = chooser.selectedFiles
-                        .map { it.toPath() }
-                        .filter { it.toString() !in existingPaths }
-                    onFilesChanged(selectedFiles + newFiles)
-                }
-            }) {
-                Icon(
-                    imageVector = Icons.Regular.Add,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(i18n["wizard.create.add_files"])
+    FileDragDropContainer(
+        onFilesDropped = { droppedFiles ->
+            val existingPaths = selectedFiles.map { it.toString() }.toSet()
+            val newFiles = droppedFiles.filter { it.toString() !in existingPaths }
+            if (newFiles.isNotEmpty()) {
+                onFilesChanged(selectedFiles + newFiles)
             }
-
-            Button(onClick = {
-                val chooser = JFileChooser().apply {
-                    fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-                    dialogTitle = i18n["wizard.create.add_folder"]
+        },
+        i18n = i18n,
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    val chooser = JFileChooser().apply {
+                        isMultiSelectionEnabled = true
+                        dialogTitle = i18n["wizard.create.add_files"]
+                    }
+                    if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                        val existingPaths = selectedFiles.map { it.toString() }.toSet()
+                        val newFiles = chooser.selectedFiles
+                            .map { it.toPath() }
+                            .filter { it.toString() !in existingPaths }
+                        onFilesChanged(selectedFiles + newFiles)
+                    }
+                }) {
+                    Icon(
+                        imageVector = Icons.Regular.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(i18n["wizard.create.add_files"])
                 }
-                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                    val newPath = chooser.selectedFile.toPath()
-                    val existingPaths = selectedFiles.map { it.toString() }.toSet()
-                    if (newPath.toString() !in existingPaths) {
-                        onFilesChanged(selectedFiles + newPath)
+
+                Button(onClick = {
+                    val chooser = JFileChooser().apply {
+                        fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+                        dialogTitle = i18n["wizard.create.add_folder"]
+                    }
+                    if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                        val newPath = chooser.selectedFile.toPath()
+                        val existingPaths = selectedFiles.map { it.toString() }.toSet()
+                        if (newPath.toString() !in existingPaths) {
+                            onFilesChanged(selectedFiles + newPath)
+                        }
+                    }
+                }) {
+                    Icon(
+                        imageVector = Icons.Regular.Folder,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(i18n["wizard.create.add_folder"])
+                }
+
+                if (selectedFiles.isNotEmpty()) {
+                    Button(onClick = { onFilesChanged(emptyList()) }) {
+                        Text(i18n["wizard.create.clear"])
                     }
                 }
-            }) {
-                Icon(
-                    imageVector = Icons.Regular.Folder,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(i18n["wizard.create.add_folder"])
             }
 
-            if (selectedFiles.isNotEmpty()) {
-                Button(onClick = { onFilesChanged(emptyList()) }) {
-                    Text(i18n["wizard.create.clear"])
-                }
-            }
-        }
+            Spacer(modifier = Modifier.height(16.dp))
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        if (selectedFiles.isEmpty()) {
+            // File list area
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(FluentTheme.colors.background.card.default),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Regular.DocumentAdd,
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp),
-                        tint = FluentTheme.colors.text.text.disabled
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = i18n["wizard.create.no_files"],
-                        style = FluentTheme.typography.body,
-                        color = FluentTheme.colors.text.text.secondary
-                    )
-                }
-            }
-        } else {
-            Text(
-                text = i18n.format("wizard.create.files_count", selectedFiles.size),
-                style = FluentTheme.typography.bodyStrong,
-                color = AetherColors.AccentPrimary
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-
-            LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .clip(RoundedCornerShape(4.dp))
                     .background(FluentTheme.colors.background.card.default)
             ) {
-                items(
-                    items = selectedFiles,
-                    key = { it.toString() }
-                ) { path ->
-                    FileListItem(
-                        path = path,
-                        onRemove = { onFileRemoved(path) }
-                    )
+                if (selectedFiles.isEmpty()) {
+                    // Empty state with hint
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Regular.DocumentAdd,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = FluentTheme.colors.text.text.disabled
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = i18n["wizard.create.no_files"],
+                                style = FluentTheme.typography.body,
+                                color = FluentTheme.colors.text.text.secondary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = i18n["wizard.create.drag_hint"],
+                                style = FluentTheme.typography.caption,
+                                color = FluentTheme.colors.text.text.disabled
+                            )
+                        }
+                    }
+                } else {
+                    // File list
+                    Column(modifier = Modifier.fillMaxSize().padding(8.dp)) {
+                        Text(
+                            text = i18n.format("wizard.create.files_count", selectedFiles.size),
+                            style = FluentTheme.typography.bodyStrong,
+                            color = AetherColors.AccentPrimary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        LazyColumn(modifier = Modifier.fillMaxSize()) {
+                            items(
+                                items = selectedFiles,
+                                key = { it.toString() }
+                            ) { path ->
+                                FileListItem(
+                                    path = path,
+                                    onRemove = { onFileRemoved(path) }
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -586,6 +604,7 @@ private fun FileListItem(
                 .size(28.dp)
                 .clip(RoundedCornerShape(4.dp))
                 .background(if (isButtonHovered) FluentTheme.colors.subtleFill.tertiary else Color.Transparent)
+                .pointerHoverIcon(PointerIcon.Hand)
                 .hoverable(buttonInteractionSource)
                 .clickable(
                     interactionSource = buttonInteractionSource,
@@ -614,12 +633,22 @@ private fun CompressionStep(
     onChunkSizeChanged: (Int) -> Unit,
     i18n: I18n
 ) {
+    // Get algorithm-specific tooltip
+    val algorithmTooltip = when (algorithm) {
+        "zstd" -> i18n["tooltip.compression.algorithm.zstd"]
+        "lz4" -> i18n["tooltip.compression.algorithm.lz4"]
+        else -> i18n["tooltip.compression.algorithm.none"]
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .widthIn(max = 600.dp)
     ) {
-        SectionCard(title = i18n["wizard.create.algorithm"]) {
+        FluentSectionCard(
+            title = i18n["wizard.create.algorithm"],
+            tooltip = algorithmTooltip
+        ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("zstd" to "ZSTD", "lz4" to "LZ4", "none" to i18n["compression.none"]).forEach { (value, label) ->
                     SelectableChip(
@@ -633,7 +662,10 @@ private fun CompressionStep(
 
         if (algorithm != "none") {
             Spacer(modifier = Modifier.height(16.dp))
-            SectionCard(title = "${i18n["wizard.create.level"]}: $level") {
+            FluentSectionCard(
+                title = "${i18n["wizard.create.level"]}: $level",
+                tooltip = i18n["tooltip.compression.level"]
+            ) {
                 val maxLevel = if (algorithm == "zstd") 22 else 17
                 Slider(
                     value = level.toFloat(),
@@ -649,7 +681,10 @@ private fun CompressionStep(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        SectionCard(title = i18n["wizard.create.chunk_size"]) {
+        FluentSectionCard(
+            title = i18n["wizard.create.chunk_size"],
+            tooltip = i18n["tooltip.chunk_size"]
+        ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(64, 128, 256, 512, 1024).forEach { size ->
                     SelectableChip(
@@ -684,6 +719,7 @@ private fun EncryptionStep(
             modifier = Modifier
                 .clip(RoundedCornerShape(4.dp))
                 .background(FluentTheme.colors.background.card.default)
+                .pointerHoverIcon(PointerIcon.Hand)
                 .clickable { onEnabledChanged(!enabled) }
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -710,8 +746,17 @@ private fun EncryptionStep(
         }
 
         if (enabled) {
+            // Get encryption algorithm-specific tooltip
+            val encryptionTooltip = when (algorithm) {
+                "aes-256-gcm" -> i18n["tooltip.encryption.aes256gcm"]
+                else -> i18n["tooltip.encryption.chacha20"]
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
-            SectionCard(title = i18n["wizard.create.algorithm"]) {
+            FluentSectionCard(
+                title = i18n["wizard.create.algorithm"],
+                tooltip = encryptionTooltip
+            ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(
                         "aes-256-gcm" to "AES-256-GCM",
@@ -727,17 +772,27 @@ private fun EncryptionStep(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-            SectionCard(title = i18n["wizard.create.password"]) {
+            FluentSectionCard(title = i18n["wizard.create.password"]) {
+                var passwordVisible by remember { mutableStateOf(false) }
+                var confirmPasswordVisible by remember { mutableStateOf(false) }
+
                 OutlinedTextField(
                     value = password,
                     onValueChange = onPasswordChanged,
                     label = { androidx.compose.material3.Text(i18n["wizard.create.password"]) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = AetherColors.AccentPrimary,
-                        cursorColor = AetherColors.AccentPrimary
-                    )
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                imageVector = if (passwordVisible) Icons.Regular.EyeOff else Icons.Regular.Eye,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    },
+                    colors = outlinedTextFieldColors()
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(
@@ -746,11 +801,18 @@ private fun EncryptionStep(
                     label = { androidx.compose.material3.Text(i18n["wizard.create.confirm_password"]) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
+                            Icon(
+                                imageVector = if (confirmPasswordVisible) Icons.Regular.EyeOff else Icons.Regular.Eye,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    },
                     isError = confirmPassword.isNotEmpty() && password != confirmPassword,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = AetherColors.AccentPrimary,
-                        cursorColor = AetherColors.AccentPrimary
-                    )
+                    colors = outlinedTextFieldColors()
                 )
                 if (confirmPassword.isNotEmpty() && password != confirmPassword) {
                     Spacer(modifier = Modifier.height(8.dp))
@@ -781,7 +843,7 @@ private fun OutputStep(
             .fillMaxWidth()
             .widthIn(max = 600.dp)
     ) {
-        SectionCard(title = i18n["wizard.create.output_file"]) {
+        FluentSectionCard(title = i18n["wizard.create.output_file"]) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
                     value = outputPath?.toString() ?: "",
@@ -789,9 +851,7 @@ private fun OutputStep(
                     readOnly = true,
                     modifier = Modifier.weight(1f),
                     placeholder = { androidx.compose.material3.Text(i18n["wizard.create.browse"]) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = AetherColors.AccentPrimary
-                    )
+                    colors = outlinedTextFieldColors()
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(onClick = {
@@ -814,7 +874,7 @@ private fun OutputStep(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        SectionCard(title = i18n["wizard.create.summary"]) {
+        FluentSectionCard(title = i18n["wizard.create.summary"]) {
             SummaryRow(i18n["archive.entries"], selectedFiles.size.toString())
             Spacer(modifier = Modifier.height(8.dp))
             SummaryRow(
@@ -832,28 +892,6 @@ private fun OutputStep(
 }
 
 @Composable
-private fun SectionCard(
-    title: String,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
-            .background(FluentTheme.colors.background.card.default)
-            .padding(16.dp)
-    ) {
-        Text(
-            text = title,
-            style = FluentTheme.typography.bodyStrong,
-            color = AetherColors.AccentPrimary
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        content()
-    }
-}
-
-@Composable
 private fun SelectableChip(
     selected: Boolean,
     onClick: () -> Unit,
@@ -866,6 +904,7 @@ private fun SelectableChip(
         modifier = Modifier
             .clip(RoundedCornerShape(4.dp))
             .background(backgroundColor)
+            .pointerHoverIcon(PointerIcon.Hand)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center
@@ -900,6 +939,7 @@ private fun SummaryRow(label: String, value: String) {
 private fun CreationProgressContent(
     progress: Float,
     currentFileName: String,
+    isIndeterminate: Boolean,
     i18n: I18n
 ) {
     Box(
@@ -926,17 +966,42 @@ private fun CreationProgressContent(
                 color = FluentTheme.colors.text.text.secondary
             )
             Spacer(modifier = Modifier.height(24.dp))
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth(),
-                color = AetherColors.AccentPrimary,
-                trackColor = FluentTheme.colors.subtleFill.secondary
-            )
-            Spacer(modifier = Modifier.height(8.dp))
+
+            if (isIndeterminate) {
+                // Show indeterminate progress for large files
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = AetherColors.AccentPrimary,
+                    trackColor = FluentTheme.colors.subtleFill.secondary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = i18n["common.please_wait"],
+                    style = FluentTheme.typography.caption,
+                    color = FluentTheme.colors.text.text.secondary
+                )
+            } else {
+                // Show determinate progress
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = AetherColors.AccentPrimary,
+                    trackColor = FluentTheme.colors.subtleFill.secondary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "${(progress * 100).toInt()}%",
+                    style = FluentTheme.typography.caption,
+                    color = FluentTheme.colors.text.text.secondary
+                )
+            }
+
+            // Hint that user can navigate away
+            Spacer(modifier = Modifier.height(24.dp))
             Text(
-                text = "${(progress * 100).toInt()}%",
+                text = i18n["wizard.create.background_hint"],
                 style = FluentTheme.typography.caption,
-                color = FluentTheme.colors.text.text.secondary
+                color = FluentTheme.colors.text.text.disabled
             )
         }
     }
@@ -946,13 +1011,18 @@ private fun CreationProgressContent(
 private fun CreationSuccessContent(
     outputPath: Path,
     i18n: I18n,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onOpenInExplorer: () -> Unit,
+    onOpenInApp: () -> Unit
 ) {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.widthIn(max = 400.dp)
+        ) {
             Icon(
                 imageVector = Icons.Regular.CheckmarkCircle,
                 contentDescription = null,
@@ -971,9 +1041,48 @@ private fun CreationSuccessContent(
                 style = FluentTheme.typography.body,
                 color = FluentTheme.colors.text.text.secondary
             )
-            Spacer(modifier = Modifier.height(24.dp))
-            Button(onClick = onClose) {
-                Text(i18n["common.close"])
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Primary action - Open in App (most prominent)
+            FluentAccentButton(
+                onClick = onOpenInApp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    imageVector = Icons.Regular.Archive,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(i18n["wizard.create.open_in_app"])
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Secondary actions
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onOpenInExplorer,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Regular.FolderOpen,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(i18n["wizard.create.open_in_explorer"])
+                }
+
+                Button(
+                    onClick = onClose,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(i18n["common.close"])
+                }
             }
         }
     }
@@ -1013,5 +1122,163 @@ private fun CreationErrorContent(
                 Text(i18n["wizard.back"])
             }
         }
+    }
+}
+
+/**
+ * Creates consistent OutlinedTextField colors for theme compatibility.
+ */
+@Composable
+private fun outlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = FluentTheme.colors.text.text.primary,
+    unfocusedTextColor = FluentTheme.colors.text.text.primary,
+    focusedBorderColor = AetherColors.AccentPrimary,
+    unfocusedBorderColor = FluentTheme.colors.stroke.control.default,
+    focusedLabelColor = AetherColors.AccentPrimary,
+    unfocusedLabelColor = FluentTheme.colors.text.text.secondary,
+    cursorColor = AetherColors.AccentPrimary,
+    focusedPlaceholderColor = FluentTheme.colors.text.text.secondary,
+    unfocusedPlaceholderColor = FluentTheme.colors.text.text.secondary
+)
+
+@Composable
+private fun FileExistsDialog(
+    fileName: String,
+    i18n: I18n,
+    onOverwrite: () -> Unit,
+    onChangeLocation: () -> Unit,
+    onCancel: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onCancel) {
+        Column(
+            modifier = Modifier
+                .width(480.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(FluentTheme.colors.background.solid.base)
+                .padding(24.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Regular.Warning,
+                    contentDescription = null,
+                    modifier = Modifier.size(32.dp),
+                    tint = AetherColors.Warning
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = i18n["dialog.file_exists.title"],
+                    style = FluentTheme.typography.subtitle
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = i18n.format("dialog.file_exists.message", fileName),
+                style = FluentTheme.typography.body,
+                color = FluentTheme.colors.text.text.secondary
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                DialogButton(onClick = onCancel) {
+                    Text(i18n["common.cancel"])
+                }
+                DialogButton(onClick = onChangeLocation) {
+                    Icon(
+                        imageVector = Icons.Regular.FolderOpen,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(i18n["dialog.file_exists.change_location"])
+                }
+                DialogAccentButton(onClick = onOverwrite) {
+                    Icon(
+                        imageVector = Icons.Regular.ArrowSync,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(i18n["dialog.file_exists.overwrite"])
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DialogButton(
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+
+    val backgroundColor = when {
+        !enabled -> FluentTheme.colors.subtleFill.disabled
+        isHovered -> FluentTheme.colors.subtleFill.tertiary
+        else -> FluentTheme.colors.subtleFill.secondary
+    }
+
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(backgroundColor)
+            .pointerHoverIcon(PointerIcon.Hand)
+            .hoverable(interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick
+            )
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+        content = content
+    )
+}
+
+@Composable
+private fun DialogAccentButton(
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+
+    val backgroundColor = when {
+        !enabled -> AetherColors.AccentPrimary.copy(alpha = 0.5f)
+        isHovered -> AetherColors.AccentHover
+        else -> AetherColors.AccentPrimary
+    }
+
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.material3.LocalContentColor provides Color.White,
+        com.konyaco.fluent.LocalContentColor provides Color.White
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .background(backgroundColor)
+                .pointerHoverIcon(PointerIcon.Hand)
+                .hoverable(interactionSource)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    enabled = enabled,
+                    onClick = onClick
+                )
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+            content = content
+        )
     }
 }
