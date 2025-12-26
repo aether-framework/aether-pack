@@ -305,7 +305,7 @@ private fun SidebarHeader(
             if (isButtonHovered && !isExpanded) {
                 Popup(
                     alignment = Alignment.TopStart,
-                    offset = androidx.compose.ui.unit.IntOffset(56, 8),
+                    offset = androidx.compose.ui.unit.IntOffset(36, 8),
                     properties = PopupProperties(focusable = false)
                 ) {
                     Box(
@@ -463,7 +463,7 @@ private fun NavItem(
         if (showTooltip) {
             Popup(
                 alignment = Alignment.TopStart,
-                offset = androidx.compose.ui.unit.IntOffset(56, 8),
+                offset = androidx.compose.ui.unit.IntOffset(36, 8),
                 properties = PopupProperties(focusable = false)
             ) {
                 Box(
